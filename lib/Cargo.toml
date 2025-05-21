@@ -9,8 +9,8 @@ readme = { workspace = true }
 keywords = { workspace = true }
 
 [dependencies]
-zip = "2.5.0"
-quick-xml = "0.37.4"
+zip = "3.0.0"
+quick-xml = "0.37.5"
 ab_glyph = { version = "0.2.29", optional = true }
 imageproc = { version = "0.25.0", optional = true}
 iepub-derive = { path = "../derive", version = "0.8.2"}
@@ -18,7 +18,7 @@ image = { version = "0.25.6", default-features = false, features = ["jpeg"], opt
 
 
 [dev-dependencies]
-tinyget = { version = "1.0.2", features = ["https"] }
+tinyget = { version = "1.1.2", features = ["https"] }
 
 [features]
 cover = ["dep:ab_glyph","dep:image","dep:imageproc"]
