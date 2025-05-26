@@ -1,5 +1,6 @@
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::{
     io::{Read, Seek},
     ops::Deref,
@@ -202,10 +203,9 @@ fn read_spine_xml(
                     b"spine" => {
                         // 写入书本
                         for ele in assets.iter() {
-                            if ele.id() == "toc" {
+                            if ele.id() == "toc" && !ele.file_name().contains(".xhtml") {
                                 continue;
                             }
-
                             book.add_assets(ele.clone());
                         }
                     }
@@ -228,7 +228,9 @@ fn read_spine_xml(
                                 book.add_chapter(
                                     EpubHtml::default().with_file_name(xh.file_name()),
                                 );
-                                assets.remove(index);
+                                if !xh.id().eq_ignore_ascii_case("toc") {
+                                    assets.remove(index);
+                                }
                             }
                         }
                     }
@@ -282,7 +284,6 @@ fn read_manifest_xml(
                                 a.set_id(h.as_str());
                             }
                         }
-
                         assets.push(a);
                     }
                     _ => {
@@ -558,6 +559,101 @@ fn read_nav_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     }
     Ok(())
 }
+
+fn read_nav_xhtml(xhtml: &str, book: &mut EpubBook) -> IResult<()> {
+    use quick_xml::events::Event;
+    use quick_xml::reader::Reader;
+
+    let mut reader = Reader::from_str(xhtml);
+    reader.config_mut().trim_text(true);
+    let mut stack: VecDeque<Vec<EpubNav>> = VecDeque::new();
+    let mut items = Vec::new();
+    let mut current_item = None;
+    let mut in_toc_nav = false;
+    let mut buffer = String::new();
+    let mut in_label = false;
+    loop {
+        match reader.read_event()? {
+            Event::Start(e) => match e.name().as_ref() {
+                b"nav" if has_epub_type(&e, "toc") => in_toc_nav = true,
+                b"ol" if in_toc_nav => stack.push_back(Vec::new()),
+                b"li" if in_toc_nav => current_item = Some(EpubNav::default()),
+                b"a" if in_toc_nav => {
+                    if let Some(href) = e
+                        .attributes()
+                        .find(|a| a.as_ref().unwrap().key.as_ref() == b"href")
+                    {
+                        let href = String::from_utf8_lossy(&href.unwrap().value).to_string();
+                        current_item.as_mut().unwrap().set_file_name(&href);
+                    }
+                }
+                b"span" => {
+                    if let Some(class) = e
+                        .attributes()
+                        .find(|a| a.as_ref().unwrap().key.as_ref() == b"class")
+                    {
+                        match class.unwrap().value.as_ref() {
+                            b"toc-label" => in_label = true,
+                            _ => (),
+                        }
+                    }
+                }
+                _ => (),
+            },
+            Event::Text(e) => {
+                let text = e.unescape()?;
+                if in_label {
+                    buffer.push_str(&text);
+                }
+            }
+            Event::End(e) => match e.name().as_ref() {
+                b"nav" => in_toc_nav = false,
+                b"ol" => {
+                    if let Some(children) = stack.pop_back() {
+                        if let Some(last) = stack.back_mut() {
+                            for item in children {
+                                last.last_mut().unwrap().push(item);
+                            }
+                        } else {
+                            items = children;
+                        }
+                    }
+                }
+                b"li" => {
+                    if let Some(mut item) = current_item.take() {
+                        if let Some(children) = stack.back_mut() {
+                            children.push(item);
+                        } else {
+                            items.push(item);
+                        }
+                    }
+                }
+                b"span" => {
+                    if in_label {
+                        current_item.as_mut().unwrap().set_title(buffer.trim());
+                        buffer.clear();
+                        in_label = false;
+                    }
+                }
+                _ => (),
+            },
+            Event::Eof => break,
+            _ => (),
+        }
+    }
+    for nav in items {
+        book.add_nav(nav);
+    }
+    Ok(())
+}
+
+fn has_epub_type(e: &BytesStart, value: &str) -> bool {
+    e.attributes().any(|a| {
+        let attr = a.as_ref().unwrap();
+        attr.key.as_ref() == b"epub:type" && attr.value.as_ref() == value.as_bytes()
+    })
+}
+
 #[derive(Debug, Clone)]
 struct EpubReader<T> {
     inner: zip::ZipArchive<T>,
@@ -605,7 +701,7 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
 
                 {
                     // 读取导航
-                    if let Some(toc) = book.assets().find(|s| s.id() == "ncx") {
+                    if let Some(toc) = book.assets().find(|s| s.id() == "ncx" || s.id() == "toc") {
                         let t = crate::path::Path::system(path.as_str())
                             .pop()
                             .join(toc.file_name())
@@ -613,8 +709,11 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
 
                         if reader.by_name(t.as_str()).is_ok() {
                             let content = read_from_zip!(reader, t.as_str());
-
-                            read_nav_xml(content.as_str(), book)?;
+                            if toc.file_name().contains(".xhtml") {
+                                read_nav_xhtml(content.as_str(), book)?;
+                            } else {
+                                read_nav_xml(content.as_str(), book)?;
+                            }
                             book.update_chapter();
                         }
                     }
