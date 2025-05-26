@@ -1,6 +1,7 @@
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
 use std::collections::VecDeque;
+use std::ops::Index;
 use std::{
     io::{Read, Seek},
     ops::Deref,
@@ -228,7 +229,9 @@ fn read_spine_xml(
                                 book.add_chapter(
                                     EpubHtml::default().with_file_name(xh.file_name()),
                                 );
-                                if !xh.id().eq_ignore_ascii_case("toc") {
+                                if !xh.id().eq_ignore_ascii_case("toc")
+                                    && xh.file_name().contains(".xhtml")
+                                {
                                     assets.remove(index);
                                 }
                             }
@@ -560,7 +563,7 @@ fn read_nav_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     Ok(())
 }
 
-fn read_nav_xhtml(xhtml: &str, book: &mut EpubBook) -> IResult<()> {
+fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResult<()> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
@@ -583,7 +586,10 @@ fn read_nav_xhtml(xhtml: &str, book: &mut EpubBook) -> IResult<()> {
                         .attributes()
                         .find(|a| a.as_ref().unwrap().key.as_ref() == b"href")
                     {
-                        let href = String::from_utf8_lossy(&href.unwrap().value).to_string();
+                        let mut href = String::from_utf8_lossy(&href.unwrap().value).to_string();
+                        if !href.starts_with(&root_path) {
+                            href = format!("{}{}", root_path, href);
+                        }
                         current_item.as_mut().unwrap().set_file_name(&href);
                     }
                 }
@@ -620,7 +626,7 @@ fn read_nav_xhtml(xhtml: &str, book: &mut EpubBook) -> IResult<()> {
                     }
                 }
                 b"li" => {
-                    if let Some(mut item) = current_item.take() {
+                    if let Some(item) = current_item.take() {
                         if let Some(children) = stack.back_mut() {
                             children.push(item);
                         } else {
@@ -710,7 +716,18 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
                         if reader.by_name(t.as_str()).is_ok() {
                             let content = read_from_zip!(reader, t.as_str());
                             if toc.file_name().contains(".xhtml") {
-                                read_nav_xhtml(content.as_str(), book)?;
+                                let root = toc
+                                    .file_name()
+                                    .rfind("/")
+                                    .map(|f| {
+                                        return toc
+                                            .file_name()
+                                            .get(..(f + 1))
+                                            .unwrap_or_default()
+                                            .to_string();
+                                    })
+                                    .unwrap_or_default();
+                                read_nav_xhtml(content.as_str(), root, book)?;
                             } else {
                                 read_nav_xml(content.as_str(), book)?;
                             }
