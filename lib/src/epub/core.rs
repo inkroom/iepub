@@ -345,6 +345,8 @@ pub struct EpubBook {
     chapters: Vec<EpubHtml>,
     /// 封面
     cover: Option<EpubAssets>,
+    /// 版本号
+    version: String,
     /// 处于读模式
     reader: Option<Rc<RefCell<Box<dyn EpubReaderTrait>>>>,
     /// PREFIX
@@ -513,6 +515,14 @@ impl EpubBook {
     /// 获取目录
     pub fn nav(&self) -> &[EpubNav] {
         &self.nav
+    }
+
+    pub fn set_version(&mut self, version: String) {
+        self.version = version;
+    }
+
+    pub fn version(&self) -> &str {
+        self.version.as_ref()
     }
 
     pub fn set_cover(&mut self, cover: EpubAssets) {

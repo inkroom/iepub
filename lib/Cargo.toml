@@ -9,7 +9,7 @@ readme = { workspace = true }
 keywords = { workspace = true }
 
 [dependencies]
-zip = "3.0.0"
+zip = "4.0.0"
 quick-xml = "0.37.5"
 ab_glyph = { version = "0.2.29", optional = true }
 imageproc = { version = "0.25.0", optional = true}

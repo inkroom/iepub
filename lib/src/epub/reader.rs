@@ -308,6 +308,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = Vec::new();
     let mut assets: Vec<EpubAssets> = Vec::new();
+    let mut version = String::from("2.0");
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => {
@@ -319,6 +320,16 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"package" => {
                     parent.push("package".to_string());
+                    for attribute in e.attributes() {
+                        if let Ok(attr) = attribute {
+                            if attr.key.as_ref() == b"version" {
+                                let ver = attr.unescape_value()?.trim().to_string();
+                                if ver.len() > 0 {
+                                    version = ver;
+                                }
+                            }
+                        }
+                    }
                 }
                 b"metadata" => {
                     if parent.len() != 1 || parent[0] != "package" {
@@ -363,6 +374,8 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         }
         buf.clear();
     }
+
+    book.set_version(version);
 
     let mut last_modify = None;
     let mut cover = None;
@@ -420,6 +433,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
 
     Ok(())
 }
+
 fn read_nav_point_xml(
     reader: &mut quick_xml::reader::Reader<&[u8]>,
     nav: &mut EpubNav,
@@ -587,7 +601,6 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
                     book.prefix.push_str(pp.pop().to_str().as_str());
                 }
                 let opf = read_from_zip!(reader, path.as_str());
-
                 read_opf_xml(opf.as_str(), book)?;
 
                 {
