@@ -872,6 +872,8 @@ mod tests {
         println!("nb {:?}", nb.assets());
         println!("{:?}", b.assets());
 
+        println!("version = {}", b.version());
+
         // 多出来的一个是导航 nav.xhtml，还有toc.ncx TODO 2025-05-28 正常只应该 +1
         assert_eq!(b.assets().len() + 2, nb.assets().len());
         // 多出来的一个是导航 nav.xhtml，还有toc.ncx

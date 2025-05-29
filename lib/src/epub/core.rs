@@ -531,6 +531,11 @@ impl EpubBook {
         })
     }
 
+    pub fn version(&mut self) -> String {
+        let s = self.reader.as_mut().unwrap();
+        (*s.borrow_mut()).version().to_string()
+    }
+
     /// 获取目录
     pub fn nav(&self) -> &[EpubNav] {
         &self.nav
