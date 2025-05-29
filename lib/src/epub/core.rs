@@ -176,14 +176,16 @@ impl EpubAssets {
     pub fn data(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            if !f.starts_with(common::EPUB) {
-                f = format!("{}{}", common::EPUB, f);
-            }
-            // 可读
             let s = self.reader.as_mut().unwrap();
-            let d = (*s.borrow_mut()).read_file(f.as_str());
-            if let Ok(v) = d {
-                self.set_data(v);
+            if (*s.borrow_mut()).version().trim() == "2.0" {
+                if !f.starts_with(common::EPUB) {
+                    f = format!("{}{}", common::EPUB, f);
+                }
+                // 可读
+                let d = (*s.borrow_mut()).read_file(f.as_str());
+                if let Ok(v) = d {
+                    self.set_data(v);
+                }
             } else {
                 if !f.starts_with(common::EPUB3) {
                     f = format!("{}{}", common::EPUB3, f);
@@ -364,8 +366,6 @@ pub struct EpubBook {
     chapters: Vec<EpubHtml>,
     /// 封面
     cover: Option<EpubAssets>,
-    /// 版本号
-    version: String,
     /// 处于读模式
     reader: Option<Rc<RefCell<Box<dyn EpubReaderTrait>>>>,
     /// PREFIX
@@ -536,14 +536,6 @@ impl EpubBook {
         &self.nav
     }
 
-    pub fn set_version(&mut self, version: String) {
-        self.version = version;
-    }
-
-    pub fn version(&self) -> &str {
-        self.version.as_ref()
-    }
-
     pub fn set_cover(&mut self, cover: EpubAssets) {
         self.cover = Some(cover);
     }
@@ -608,6 +600,8 @@ fn flatten_nav(nav: &[EpubNav]) -> Vec<&EpubNav> {
     n
 }
 pub(crate) trait EpubReaderTrait {
+    fn version(&mut self) -> &str;
+
     fn read(&mut self, book: &mut EpubBook) -> IResult<()>;
     ///
     /// file epub中的文件目录

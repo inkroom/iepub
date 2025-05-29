@@ -298,10 +298,11 @@ fn read_manifest_xml(
     Ok(())
 }
 
-fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
+fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<String> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
+    let mut version = String::from("2.0");
     let mut reader = Reader::from_str(xml);
     let config = reader.config_mut();
     config.trim_text(true);
@@ -326,9 +327,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                             if attr.key.as_ref() == b"version" {
                                 let ver = attr.unescape_value()?.trim().to_string();
                                 if ver.len() > 0 {
-                                    book.set_version(ver);
-                                } else {
-                                    book.set_version(String::from("2.0"));
+                                    version = ver;
                                 }
                             }
                         }
@@ -432,7 +431,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         book.set_generator(g.as_str());
     }
 
-    Ok(())
+    Ok(version)
 }
 
 fn read_nav_point_xml(
@@ -659,6 +658,7 @@ fn has_epub_type(e: &BytesStart, value: &str) -> bool {
 
 #[derive(Debug, Clone)]
 struct EpubReader<T> {
+    version: String,
     inner: zip::ZipArchive<T>,
 }
 
@@ -674,10 +674,17 @@ struct EpubReader<T> {
 impl<T: Read + Seek> EpubReader<T> {
     pub fn new(value: T) -> IResult<Self> {
         let r = zip::ZipArchive::new(value)?;
-        Ok(EpubReader { inner: r })
+        Ok(EpubReader {
+            inner: r,
+            version: String::from("2.0"),
+        })
     }
 }
 impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
+    fn version(&mut self) -> &str {
+        &self.version
+    }
+
     fn read(&mut self, book: &mut EpubBook) -> IResult<()> {
         let reader = &mut self.inner;
 
@@ -700,7 +707,7 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
                     book.prefix.push_str(pp.pop().to_str().as_str());
                 }
                 let opf = read_from_zip!(reader, path.as_str());
-                read_opf_xml(opf.as_str(), book)?;
+                self.version = read_opf_xml(opf.as_str(), book)?;
 
                 {
                     // 读取导航
@@ -850,7 +857,7 @@ mod tests {
         let book = read_from_vec(data);
         let mut nb = book.unwrap();
         println!("\n{}", nb);
-        let b = create_book().book().unwrap();
+        let mut b = create_book().book().unwrap();
         assert_eq!(b.title(), nb.title());
         assert_eq!(b.date(), nb.date());
         assert_eq!(b.creator(), nb.creator());
@@ -865,7 +872,6 @@ mod tests {
         println!("nb {:?}", nb.assets());
         println!("{:?}", b.assets());
 
-        println!("version = {}", b.version());
         // 多出来的一个是导航 nav.xhtml，还有toc.ncx TODO 2025-05-28 正常只应该 +1
         assert_eq!(b.assets().len() + 2, nb.assets().len());
         // 多出来的一个是导航 nav.xhtml，还有toc.ncx
