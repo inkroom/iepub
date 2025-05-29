@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -166,26 +168,45 @@ epub_base_field! {
 /// 例如css，字体，图片等
 ///
 #[derive(Default,Clone)]
-pub struct EpubAssets {}
+pub struct EpubAssets {
+}
 }
 
 impl EpubAssets {
     pub fn data(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            if !f.starts_with(common::EPUB) {
-                f = format!("{}{}", common::EPUB, f);
-            }
-            // 可读
             let s = self.reader.as_mut().unwrap();
-
-            let d = (*s.borrow_mut()).read_file(f.as_str());
-            // let d = self.reader.as_mut().unwrap().read_file(f);
-            if let Ok(v) = d {
-                self.set_data(v);
+            if (*s.borrow_mut()).version().trim() == "2.0" {
+                if !f.starts_with(common::EPUB) {
+                    f = format!("{}{}", common::EPUB, f);
+                }
+                // 可读
+                let d = (*s.borrow_mut()).read_file(f.as_str());
+                if let Ok(v) = d {
+                    self.set_data(v);
+                }
+            } else {
+                if !f.starts_with(common::EPUB3) {
+                    f = format!("{}{}", common::EPUB3, f);
+                }
+                let d3 = (*s.borrow_mut()).read_file(f.as_str());
+                if let Ok(v3) = d3 {
+                    self.set_data(v3);
+                }
             }
         }
         self._data.as_deref()
+    }
+
+    pub fn save(&mut self, path: &str) -> IResult<()> {
+        if let Some(data) = self.data() {
+            let file = File::create(path)?;
+            let mut writer = BufWriter::new(file);
+            writer.write_all(&data)?;
+            writer.flush()?;
+        }
+        Ok(())
     }
 }
 
@@ -345,8 +366,6 @@ pub struct EpubBook {
     chapters: Vec<EpubHtml>,
     /// 封面
     cover: Option<EpubAssets>,
-    /// 版本号
-    version: String,
     /// 处于读模式
     reader: Option<Rc<RefCell<Box<dyn EpubReaderTrait>>>>,
     /// PREFIX
@@ -512,17 +531,14 @@ impl EpubBook {
         })
     }
 
+    pub fn version(&mut self) -> String {
+        let s = self.reader.as_mut().unwrap();
+        (*s.borrow_mut()).version().to_string()
+    }
+
     /// 获取目录
     pub fn nav(&self) -> &[EpubNav] {
         &self.nav
-    }
-
-    pub fn set_version(&mut self, version: String) {
-        self.version = version;
-    }
-
-    pub fn version(&self) -> &str {
-        self.version.as_ref()
     }
 
     pub fn set_cover(&mut self, cover: EpubAssets) {
@@ -589,6 +605,8 @@ fn flatten_nav(nav: &[EpubNav]) -> Vec<&EpubNav> {
     n
 }
 pub(crate) trait EpubReaderTrait {
+    fn version(&mut self) -> &str;
+
     fn read(&mut self, book: &mut EpubBook) -> IResult<()>;
     ///
     /// file epub中的文件目录

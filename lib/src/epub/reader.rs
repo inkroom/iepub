@@ -1,7 +1,6 @@
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
 use std::collections::VecDeque;
-use std::ops::Index;
 use std::{
     io::{Read, Seek},
     ops::Deref,
@@ -254,11 +253,10 @@ fn read_spine_xml(
 ///
 fn read_manifest_xml(
     reader: &mut quick_xml::reader::Reader<&[u8]>,
-    _book: &mut EpubBook,
+    book: &mut EpubBook,
     assets: &mut Vec<EpubAssets>,
 ) -> IResult<()> {
     use quick_xml::events::Event;
-
     // 模拟 栈，记录当前的层级
     let _parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
     let mut buf = Vec::new();
@@ -300,10 +298,11 @@ fn read_manifest_xml(
     Ok(())
 }
 
-fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
+fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<String> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
+    let mut version = String::from("2.0");
     let mut reader = Reader::from_str(xml);
     let config = reader.config_mut();
     config.trim_text(true);
@@ -312,7 +311,6 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = Vec::new();
     let mut assets: Vec<EpubAssets> = Vec::new();
-    let mut version = String::from("2.0");
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => {
@@ -379,8 +377,6 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         buf.clear();
     }
 
-    book.set_version(version);
-
     let mut last_modify = None;
     let mut cover = None;
     let mut generator = None;
@@ -435,7 +431,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         book.set_generator(g.as_str());
     }
 
-    Ok(())
+    Ok(version)
 }
 
 fn read_nav_point_xml(
@@ -662,6 +658,7 @@ fn has_epub_type(e: &BytesStart, value: &str) -> bool {
 
 #[derive(Debug, Clone)]
 struct EpubReader<T> {
+    version: String,
     inner: zip::ZipArchive<T>,
 }
 
@@ -677,10 +674,17 @@ struct EpubReader<T> {
 impl<T: Read + Seek> EpubReader<T> {
     pub fn new(value: T) -> IResult<Self> {
         let r = zip::ZipArchive::new(value)?;
-        Ok(EpubReader { inner: r })
+        Ok(EpubReader {
+            inner: r,
+            version: String::from("2.0"),
+        })
     }
 }
 impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
+    fn version(&mut self) -> &str {
+        &self.version
+    }
+
     fn read(&mut self, book: &mut EpubBook) -> IResult<()> {
         let reader = &mut self.inner;
 
@@ -703,7 +707,7 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
                     book.prefix.push_str(pp.pop().to_str().as_str());
                 }
                 let opf = read_from_zip!(reader, path.as_str());
-                read_opf_xml(opf.as_str(), book)?;
+                self.version = read_opf_xml(opf.as_str(), book)?;
 
                 {
                     // 读取导航
@@ -800,10 +804,7 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        common::tests::download_epub_file,
-        prelude::*,
-    };
+    use crate::{common::tests::download_epub_file, prelude::*};
 
     use super::{is_epub, read_nav_xml};
 
@@ -856,7 +857,7 @@ mod tests {
         let book = read_from_vec(data);
         let mut nb = book.unwrap();
         println!("\n{}", nb);
-        let b = create_book().book().unwrap();
+        let mut b = create_book().book().unwrap();
         assert_eq!(b.title(), nb.title());
         assert_eq!(b.date(), nb.date());
         assert_eq!(b.creator(), nb.creator());
@@ -872,6 +873,7 @@ mod tests {
         println!("{:?}", b.assets());
 
         println!("version = {}", b.version());
+
         // 多出来的一个是导航 nav.xhtml，还有toc.ncx TODO 2025-05-28 正常只应该 +1
         assert_eq!(b.assets().len() + 2, nb.assets().len());
         // 多出来的一个是导航 nav.xhtml，还有toc.ncx
