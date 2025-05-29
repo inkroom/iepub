@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -166,26 +168,55 @@ epub_base_field! {
 /// 例如css，字体，图片等
 ///
 #[derive(Default,Clone)]
-pub struct EpubAssets {}
+pub struct EpubAssets {
+    version:String,
+}
 }
 
 impl EpubAssets {
-    pub fn data(&mut self) -> Option<&[u8]> {
-        let mut f = String::from(self._file_name.as_str());
-        if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            if !f.starts_with(common::EPUB) {
-                f = format!("{}{}", common::EPUB, f);
-            }
-            // 可读
-            let s = self.reader.as_mut().unwrap();
+    pub fn set_version(&mut self, version: &str) {
+        self.version = version.to_string();
+    }
 
-            let d = (*s.borrow_mut()).read_file(f.as_str());
-            // let d = self.reader.as_mut().unwrap().read_file(f);
-            if let Ok(v) = d {
-                self.set_data(v);
+    pub fn data(&mut self) -> Option<&[u8]> {
+        if self.version.trim() == "2.0" {
+            let mut f = String::from(self._file_name.as_str());
+            if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
+                if !f.starts_with(common::EPUB) {
+                    f = format!("{}{}", common::EPUB, f);
+                }
+                // 可读
+                let s = self.reader.as_mut().unwrap();
+                let d = (*s.borrow_mut()).read_file(f.as_str());
+                if let Ok(v) = d {
+                    self.set_data(v);
+                }
+            }
+        } else {
+            let mut f = String::from(self._file_name.as_str());
+            if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
+                if !f.starts_with(common::EPUB3) {
+                    f = format!("{}{}", common::EPUB3, f);
+                }
+                // 可读
+                let s = self.reader.as_mut().unwrap();
+                let d = (*s.borrow_mut()).read_file(f.as_str());
+                if let Ok(v) = d {
+                    self.set_data(v);
+                }
             }
         }
         self._data.as_deref()
+    }
+
+    pub fn save(&mut self, path: &str) -> IResult<()> {
+        if let Some(data) = self.data() {
+            let file = File::create(path)?;
+            let mut writer = BufWriter::new(file);
+            writer.write_all(&data)?;
+            writer.flush()?;
+        }
+        Ok(())
     }
 }
 

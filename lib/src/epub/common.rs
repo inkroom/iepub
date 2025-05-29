@@ -83,6 +83,7 @@ macro_rules! epub_base_field{
 }
 
 pub static EPUB: &str = "OEBPS/";
+pub static EPUB3: &str = "EPUB/";
 pub static TOC: &str = "OEBPS/toc.ncx";
 pub static NAV: &str = "OEBPS/nav.xhtml";
 pub static COVER: &str = "OEBPS/cover.xhtml";

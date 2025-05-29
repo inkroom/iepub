@@ -1,7 +1,6 @@
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
 use std::collections::VecDeque;
-use std::ops::Index;
 use std::{
     io::{Read, Seek},
     ops::Deref,
@@ -254,11 +253,10 @@ fn read_spine_xml(
 ///
 fn read_manifest_xml(
     reader: &mut quick_xml::reader::Reader<&[u8]>,
-    _book: &mut EpubBook,
+    book: &mut EpubBook,
     assets: &mut Vec<EpubAssets>,
 ) -> IResult<()> {
     use quick_xml::events::Event;
-
     // 模拟 栈，记录当前的层级
     let _parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
     let mut buf = Vec::new();
@@ -271,6 +269,7 @@ fn read_manifest_xml(
                 match e.name().as_ref() {
                     b"item" => {
                         let mut a = EpubAssets::default();
+                        a.set_version(book.version());
                         if let Ok(href) = e.try_get_attribute("href") {
                             if let Some(h) = href.map(|f| {
                                 f.unescape_value()
@@ -312,7 +311,6 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = Vec::new();
     let mut assets: Vec<EpubAssets> = Vec::new();
-    let mut version = String::from("2.0");
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => {
@@ -329,7 +327,9 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                             if attr.key.as_ref() == b"version" {
                                 let ver = attr.unescape_value()?.trim().to_string();
                                 if ver.len() > 0 {
-                                    version = ver;
+                                    book.set_version(ver);
+                                } else {
+                                    book.set_version(String::from("2.0"));
                                 }
                             }
                         }
@@ -378,8 +378,6 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         }
         buf.clear();
     }
-
-    book.set_version(version);
 
     let mut last_modify = None;
     let mut cover = None;
@@ -800,10 +798,7 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        common::tests::download_epub_file,
-        prelude::*,
-    };
+    use crate::{common::tests::download_epub_file, prelude::*};
 
     use super::{is_epub, read_nav_xml};
 
