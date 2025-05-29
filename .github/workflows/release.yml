@@ -1,7 +1,13 @@
 name: release
 on:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '*.md'
   push:
+    paths-ignore:
+      - '*.md'
     branches:
       - master
 jobs:
@@ -29,8 +35,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        if: ${{ github.event_name == 'push' }}
         with:
          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          ref: ${{github.head_ref}}
       - name: Ready
         run: |
           pwd
@@ -62,54 +74,10 @@ jobs:
         run: |
           echo NEXT_VERSION=$(sed -nE 's/^\s*version = "(.*?)"/\1/p' Cargo.toml) >> $GITHUB_OUTPUT
           echo PREV_VERSION=$(cargo search iepub --limit 1 | sed -nE 's/^[^"]*"//; s/".*//1p' -) >> $GITHUB_OUTPUT
-  publish:
-    runs-on: ubuntu-24.04
-    needs: [check,release]
-    if: needs.check.outputs.NEXT_VERSION != needs.check.outputs.PREV_VERSION
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      # 必须 每个crates依次 package后publish，因为后续的package的时候要求前面的必须在crates.io，所以不能一次性把所有crate都packages后再publish
-      matrix:
-        package:
-          - crate: iepub-derive
-            path: derive
-            args: -vv
-          - crate: iepub
-            path: lib
-            args: --no-verify -vv
-    steps:
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Cargo login
-        run: cargo login ${{ secrets.CRATES_TOKEN }}
-      - name: Get Version
-        id: v
-        run: |
-          echo NEXT_VERSION=$(sed -nE 's/^\s*version = "(.*?)"/\1/p' Cargo.toml) >> $GITHUB_OUTPUT
-          echo PREV_VERSION=$(cargo search ${{ matrix.package.crate }} --limit 1 | sed -nE 's/^[^"]*"//; s/".*//1p' -) >> $GITHUB_OUTPUT
-      - name: Cargo package
-        if: steps.v.outputs.NEXT_VERSION != steps.v.outputs.PREV_VERSION
-        working-directory: ${{ matrix.package.path }}
-        run: |
-          echo "Releasing version: ${{ needs.check.outputs.NEXT_VERSION }}"
-          echo "Cargo Packaging..."
-          cargo package ${{ matrix.package.args }}
-
-      - name: Publish ${{ matrix.package.name }}
-        if: steps.v.outputs.NEXT_VERSION != steps.v.outputs.PREV_VERSION
-        working-directory: ${{ matrix.package.path }}
-        run: |
-          echo "Cargo Publishing..."
-          cargo publish ${{ matrix.package.args }}
-          echo "New version $NEXT_VERSION has been published"
   release:
     runs-on: ubuntu-24.04
     needs: [check]
+    if: github.event_name == 'push'
     permissions:
       contents: write
       packages: write
@@ -156,3 +124,48 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create -F CHANGELOG.md --target master v${{ needs.check.outputs.NEXT_VERSION }} ./out/iepub-tool
+  publish:
+    runs-on: ubuntu-24.04
+    needs: [check,release]
+    if: github.event_name == 'push' && needs.check.outputs.NEXT_VERSION != needs.check.outputs.PREV_VERSION
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      # 必须 每个crates依次 package后publish，因为后续的package的时候要求前面的必须在crates.io，所以不能一次性把所有crate都packages后再publish
+      matrix:
+        package:
+          - crate: iepub-derive
+            path: derive
+            args: -vv
+          - crate: iepub
+            path: lib
+            args: --no-verify -vv
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cargo login
+        run: cargo login ${{ secrets.CRATES_TOKEN }}
+      - name: Get Version
+        id: v
+        run: |
+          echo NEXT_VERSION=$(sed -nE 's/^\s*version = "(.*?)"/\1/p' Cargo.toml) >> $GITHUB_OUTPUT
+          echo PREV_VERSION=$(cargo search ${{ matrix.package.crate }} --limit 1 | sed -nE 's/^[^"]*"//; s/".*//1p' -) >> $GITHUB_OUTPUT
+      - name: Cargo package
+        if: steps.v.outputs.NEXT_VERSION != steps.v.outputs.PREV_VERSION
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          echo "Releasing version: ${{ needs.check.outputs.NEXT_VERSION }}"
+          echo "Cargo Packaging..."
+          cargo package ${{ matrix.package.args }}
+
+      - name: Publish ${{ matrix.package.name }}
+        if: steps.v.outputs.NEXT_VERSION != steps.v.outputs.PREV_VERSION
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          echo "Cargo Publishing..."
+          cargo publish ${{ matrix.package.args }}
+          echo "New version $NEXT_VERSION has been published"

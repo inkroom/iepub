@@ -246,7 +246,24 @@ pub(crate) fn get_media_type(file_name: &str) -> String {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub fn download_epub_file(name: &str, url: &str) {
+        use super::IError;
+        use std::borrow::Cow;
+        if name.contains("/") {
+            let p = std::path::Path::new(&name);
 
+            std::fs::create_dir_all(format!("{}", p.parent().unwrap().display())).unwrap();
+        }
+        if std::fs::metadata(name).is_err() {
+            // 下载并解压
+            tinyget::get(url)
+                .send()
+                .map(|v| v.as_bytes().to_vec())
+                .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
+                .and_then(|f| std::fs::write(name, f).map_err(|e| IError::Io(e)))
+                .unwrap();
+        }
+    }
 
     pub fn download_zip_file(name: &str, url: &str) {
         use super::IError;

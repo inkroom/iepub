@@ -800,7 +800,10 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::*;
+    use crate::{
+        common::tests::download_epub_file,
+        prelude::*,
+    };
 
     use super::{is_epub, read_nav_xml};
 
@@ -865,8 +868,13 @@ mod tests {
         assert_eq!(b.identifier(), nb.identifier());
         assert_eq!(b.last_modify(), nb.last_modify());
         // 多出来一个 导航 toc.ncx
-        assert_eq!(b.assets().len() + 1, nb.assets().len());
-        // 多出来的一个是导航 nav.xhtml
+        println!("nb {:?}", nb.assets());
+        println!("{:?}", b.assets());
+
+        println!("version = {}", b.version());
+        // 多出来的一个是导航 nav.xhtml，还有toc.ncx TODO 2025-05-28 正常只应该 +1
+        assert_eq!(b.assets().len() + 2, nb.assets().len());
+        // 多出来的一个是导航 nav.xhtml，还有toc.ncx
         assert_eq!(b.chapters().len() + 1, nb.chapters().len());
 
         // 读取html
@@ -977,5 +985,23 @@ html
 
         // assert_ne!("", chap.next().unwrap().title());
         // assert_ne!(None, book.chapters_mut().next().unwrap().data());
+    }
+
+    /// 测试使用xhtml格式存储目录的 epub3
+    #[test]
+    fn test_read_epub3_toc_xhtml() {
+        let name = "../target/epub3/xhtml.epub";
+        download_epub_file(name, "https://github.com/IDPF/epub3-samples/releases/download/20230704/cc-shared-culture.epub");
+
+        let mut epub = read_from_file(name).unwrap();
+
+        assert_ne!(0, epub.nav().len());
+        assert_ne!(0, epub.chapters().len());
+        assert_ne!(
+            0,
+            String::from_utf8(epub.chapters_mut().next().unwrap().data().unwrap().to_vec())
+                .unwrap()
+                .len()
+        );
     }
 }

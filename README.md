@@ -2,6 +2,9 @@
 
 [EPUB](https://www.w3.org/TR/2023/REC-epub-33-20230525/)、[MOBI](https://wiki.mobileread.com/wiki/MOBI)读写库，
 
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/inkroom/iepub/release.yml?label=CI)
+[![Crates.io version](https://img.shields.io/crates/v/iepub.svg)](https://crates.io/crates/iepub)
+
 ## EPUB
 
 支持从文件和内存读取和生成EPUB电子书
