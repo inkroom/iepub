@@ -269,7 +269,6 @@ fn read_manifest_xml(
                 match e.name().as_ref() {
                     b"item" => {
                         let mut a = EpubAssets::default();
-                        a.set_version(book.version());
                         if let Ok(href) = e.try_get_attribute("href") {
                             if let Some(h) = href.map(|f| {
                                 f.unescape_value()

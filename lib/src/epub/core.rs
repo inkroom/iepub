@@ -169,40 +169,28 @@ epub_base_field! {
 ///
 #[derive(Default,Clone)]
 pub struct EpubAssets {
-    version:String,
 }
 }
 
 impl EpubAssets {
-    pub fn set_version(&mut self, version: &str) {
-        self.version = version.to_string();
-    }
-
     pub fn data(&mut self) -> Option<&[u8]> {
-        if self.version.trim() == "2.0" {
-            let mut f = String::from(self._file_name.as_str());
-            if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-                if !f.starts_with(common::EPUB) {
-                    f = format!("{}{}", common::EPUB, f);
-                }
-                // 可读
-                let s = self.reader.as_mut().unwrap();
-                let d = (*s.borrow_mut()).read_file(f.as_str());
-                if let Ok(v) = d {
-                    self.set_data(v);
-                }
+        let mut f = String::from(self._file_name.as_str());
+        if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
+            if !f.starts_with(common::EPUB) {
+                f = format!("{}{}", common::EPUB, f);
             }
-        } else {
-            let mut f = String::from(self._file_name.as_str());
-            if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
+            // 可读
+            let s = self.reader.as_mut().unwrap();
+            let d = (*s.borrow_mut()).read_file(f.as_str());
+            if let Ok(v) = d {
+                self.set_data(v);
+            } else {
                 if !f.starts_with(common::EPUB3) {
                     f = format!("{}{}", common::EPUB3, f);
                 }
-                // 可读
-                let s = self.reader.as_mut().unwrap();
-                let d = (*s.borrow_mut()).read_file(f.as_str());
-                if let Ok(v) = d {
-                    self.set_data(v);
+                let d3 = (*s.borrow_mut()).read_file(f.as_str());
+                if let Ok(v3) = d3 {
+                    self.set_data(v3);
                 }
             }
         }
