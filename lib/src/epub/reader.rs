@@ -734,6 +734,7 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
                 }
             }
         }
+        book.update_assets();
 
         Ok(())
     }

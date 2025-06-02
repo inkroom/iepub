@@ -1,4 +1,3 @@
-use quick_xml::de::from_str;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
@@ -6,13 +5,11 @@ use std::io::Write;
 use std::rc::Rc;
 use std::str::FromStr;
 
+use super::common::{self};
 use super::html::{get_html_info, to_html};
-
 use crate::common::{IError, IResult};
 use crate::epub::common::LinkRel;
 use crate::epub_base_field;
-
-use super::common::{self, Package};
 
 pub(crate) mod info {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -169,23 +166,20 @@ epub_base_field! {
 ///
 #[derive(Default,Clone)]
 pub struct EpubAssets {
+    version:String,
 }
 }
 
 impl EpubAssets {
+    pub fn with_version(&mut self, version: &str) {
+        self.version.push_str(version);
+    }
+
     pub fn data(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
             let s = self.reader.as_mut().unwrap();
-            let content = (*s.borrow_mut()).read_string("EPUB/package.opf").unwrap();
-            let mut version = String::from("2.0");
-            if let Ok(package) = from_str::<Package>(&content) {
-                version = match package.version.as_str().trim().len() {
-                    0 => String::from("2.0"),
-                    _ => package.version.trim().to_string(),
-                };
-            }
-            if version == "2.0" {
+            if self.version == "2.0" {
                 if !f.starts_with(common::EPUB) {
                     f = format!("{}{}", common::EPUB, f);
                 }
@@ -598,6 +592,13 @@ impl EpubBook {
                 self.chapters.insert(index + offset, chap);
                 offset = offset + 1;
             }
+        }
+    }
+
+    pub(crate) fn update_assets(&mut self) {
+        let version = self.version().to_string();
+        for assets in self.assets_mut() {
+            assets.with_version(&version);
         }
     }
 }

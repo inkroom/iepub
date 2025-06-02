@@ -1,16 +1,7 @@
-use serde::Deserialize;
-
 #[derive(Debug)]
 pub enum LinkRel {
     CSS,
     OTHER,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Package {
-    #[serde(rename = "@version")]
-    pub version: String,
 }
 
 #[macro_export]
