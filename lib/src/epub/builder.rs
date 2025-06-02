@@ -47,6 +47,11 @@ impl EpubBuilder {
         self
     }
 
+    pub fn with_version(mut self, version: &str) -> Self {
+        self.book.set_version(version);
+        self
+    }
+
     pub fn with_title(mut self, title: &str) -> Self {
         self.book.set_title(title);
         self

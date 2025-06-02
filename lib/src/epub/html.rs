@@ -230,7 +230,7 @@ fn write_metadata(
     Ok(())
 }
 
-pub(crate) fn do_to_opf(book: &EpubBook, generator: &str) -> IResult<String> {
+pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String> {
     let vue: Vec<u8> = Vec::new();
     let mut xml: quick_xml::Writer<std::io::Cursor<Vec<u8>>> =
         quick_xml::Writer::new(std::io::Cursor::new(vue));
@@ -241,7 +241,7 @@ pub(crate) fn do_to_opf(book: &EpubBook, generator: &str) -> IResult<String> {
     let mut html = BytesStart::new("package");
     html.push_attribute(("xmlns", "http://www.idpf.org/2007/opf"));
     html.push_attribute(("unique-identifier", "id"));
-    html.push_attribute(("version", "3.0"));
+    html.push_attribute(("version", book.version()));
     html.push_attribute(("prefix", "rendition: http://www.idpf.org/vocab/rendition/#"));
 
     xml.write_event(Event::Start(html.borrow()))?;
@@ -324,7 +324,7 @@ pub(crate) fn do_to_opf(book: &EpubBook, generator: &str) -> IResult<String> {
 }
 
 /// 生成OPF
-pub(crate) fn to_opf(book: &EpubBook, generator: &str) -> String {
+pub(crate) fn to_opf(book: &mut EpubBook, generator: &str) -> String {
     match do_to_opf(book, generator) {
         Ok(s) => s,
         Err(_) => String::new(),
@@ -586,6 +586,7 @@ ok
         epub.set_title("中文");
         epub.set_creator("作者");
         epub.set_date("29939");
+        epub.set_version("3.0");
         epub.set_subject("subject");
         epub.set_format("format");
         epub.set_publisher("publisher");
@@ -627,7 +628,7 @@ ok
         epub.set_date("2024-06-28T08:07:07UTC");
         epub.set_last_modify("2024-06-28T03:07:07UTC");
 
-        let res = to_opf(&epub, "epub-rs");
+        let res = to_opf(&mut epub, "epub-rs");
         println!("[{}]", res);
 
         let ass: &str = r###"<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><meta property="dcterms:modified">2024-06-28T03:07:07UTC</meta><dc:date id="date">2024-06-28T08:07:07UTC</dc:date><meta name="generator" content="epub-rs"/><dc:identifier id="id">identifier</dc:identifier><dc:title>中文</dc:title><dc:creator id="creator">作者</dc:creator><dc:description>description</dc:description><meta property="desc">description</meta><meta name="cover" content="cover-img"/><dc:format id="format">format</dc:format><dc:publisher id="publisher">publisher</dc:publisher><dc:subject id="subject">subject</dc:subject><dc:contributor id="contributor">contributor</dc:contributor><meta ok="ov">new</meta></metadata><manifest><item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/><item href="nav.xhtml" id="toc" media-type="application/xhtml+xml" properties="nav"/><item href="" id="cover-img" media-type="" properties="cover-image"/><item href="cover.xhtml" id="cover" media-type="application/xhtml+xml"/><item href="" id="chap_0" media-type="application/xhtml+xml"/><item href="" id="assets_0" media-type=""/></manifest><spine toc="ncx"><itemref idref="toc"/><itemref idref="chap_0"/></spine></package>"###;

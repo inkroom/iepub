@@ -12,7 +12,7 @@ use crate::prelude::*;
 ///
 /// [file] 原文件路径
 ///
-pub fn write_metadata(file: &str, book: &EpubBook) -> IResult<()> {
+pub fn write_metadata(file: &str, book: &mut EpubBook) -> IResult<()> {
     let dir = std::env::temp_dir();
     let temp_file = dir.join(format!("{}.update.epub", std::process::id()));
     {
@@ -99,7 +99,7 @@ mod tests {
 
         let mut book = create_book().book().unwrap();
         book.set_title("修改后的名字");
-        write_metadata("temp.epub", &book).unwrap();
+        write_metadata("temp.epub", &mut book).unwrap();
 
         let nb = read_from_file("temp.epub").unwrap();
 

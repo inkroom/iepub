@@ -830,6 +830,7 @@ mod tests {
         fn create_book() -> EpubBuilder {
             EpubBuilder::new()
                 .with_title("书名")
+                .with_version("2.0")
                 .with_format("f书名")
                 .with_creator("作者")
                 .with_date("2024-03-14")

@@ -114,7 +114,7 @@ impl<T: Write + Seek> EpubWriter<T> {
         self.write_file(
             common::OPF,
             to_opf(
-                &book,
+                book,
                 format!("{}-{}", info::PROJECT_NAME, info::PKG_VERSION).as_str(),
             )
             .as_bytes(),
