@@ -183,7 +183,6 @@ impl EpubAssets {
                 if !f.starts_with(common::EPUB) {
                     f = format!("{}{}", common::EPUB, f);
                 }
-                println!("version: {}, path: {}", self.version, f);
                 let d = (*s.borrow_mut()).read_file(f.as_str());
                 if let Ok(v) = d {
                     self.set_data(v);
@@ -192,7 +191,6 @@ impl EpubAssets {
                 if !f.starts_with(common::EPUB3) {
                     f = format!("{}{}", common::EPUB3, f);
                 }
-                println!("version: {}, path: {}", self.version, f);
                 let d3 = (*s.borrow_mut()).read_file(f.as_str());
                 if let Ok(v3) = d3 {
                     self.set_data(v3);
@@ -598,7 +596,6 @@ impl EpubBook {
     }
 
     pub(crate) fn update_assets(&mut self) {
-        println!("aaaaaaaaaa version: {}", self.version());
         let version = self.version().to_string();
         for assets in self.assets_mut() {
             assets.with_version(&version);
