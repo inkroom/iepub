@@ -298,11 +298,10 @@ fn read_manifest_xml(
     Ok(())
 }
 
-fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<String> {
+fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
-    let mut version = String::from("2.0");
     let mut reader = Reader::from_str(xml);
     let config = reader.config_mut();
     config.trim_text(true);
@@ -327,7 +326,9 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<String> {
                             if attr.key.as_ref() == b"version" {
                                 let ver = attr.unescape_value()?.trim().to_string();
                                 if ver.len() > 0 {
-                                    version = ver;
+                                    book.set_version(ver);
+                                } else {
+                                    book.set_version(String::from("2.0"));
                                 }
                             }
                         }
@@ -431,7 +432,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<String> {
         book.set_generator(g.as_str());
     }
 
-    Ok(version)
+    Ok(())
 }
 
 fn read_nav_point_xml(
@@ -658,7 +659,6 @@ fn has_epub_type(e: &BytesStart, value: &str) -> bool {
 
 #[derive(Debug, Clone)]
 struct EpubReader<T> {
-    version: String,
     inner: zip::ZipArchive<T>,
 }
 
@@ -674,17 +674,10 @@ struct EpubReader<T> {
 impl<T: Read + Seek> EpubReader<T> {
     pub fn new(value: T) -> IResult<Self> {
         let r = zip::ZipArchive::new(value)?;
-        Ok(EpubReader {
-            inner: r,
-            version: String::from("2.0"),
-        })
+        Ok(EpubReader { inner: r })
     }
 }
 impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
-    fn version(&mut self) -> &str {
-        &self.version
-    }
-
     fn read(&mut self, book: &mut EpubBook) -> IResult<()> {
         let reader = &mut self.inner;
 
@@ -707,7 +700,7 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
                     book.prefix.push_str(pp.pop().to_str().as_str());
                 }
                 let opf = read_from_zip!(reader, path.as_str());
-                self.version = read_opf_xml(opf.as_str(), book)?;
+                read_opf_xml(opf.as_str(), book)?;
 
                 {
                     // 读取导航

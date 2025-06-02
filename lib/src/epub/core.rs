@@ -1,3 +1,4 @@
+use quick_xml::de::from_str;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
@@ -11,7 +12,7 @@ use crate::common::{IError, IResult};
 use crate::epub::common::LinkRel;
 use crate::epub_base_field;
 
-use super::common;
+use super::common::{self, Package};
 
 pub(crate) mod info {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -176,7 +177,15 @@ impl EpubAssets {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
             let s = self.reader.as_mut().unwrap();
-            if (*s.borrow_mut()).version().trim() == "2.0" {
+            let content = (*s.borrow_mut()).read_string("EPUB/package.opf").unwrap();
+            let mut version = String::from("2.0");
+            if let Ok(package) = from_str::<Package>(&content) {
+                version = match package.version.as_str().trim().len() {
+                    0 => String::from("2.0"),
+                    _ => package.version.trim().to_string(),
+                };
+            }
+            if version == "2.0" {
                 if !f.starts_with(common::EPUB) {
                     f = format!("{}{}", common::EPUB, f);
                 }
@@ -363,6 +372,8 @@ pub struct EpubBook {
     chapters: Vec<EpubHtml>,
     /// 封面
     cover: Option<EpubAssets>,
+    /// 版本号
+    version: String,
     /// 处于读模式
     reader: Option<Rc<RefCell<Box<dyn EpubReaderTrait>>>>,
     /// PREFIX
@@ -527,10 +538,12 @@ impl EpubBook {
             return s.file_name() == file_name;
         })
     }
+    pub fn set_version(&mut self, version: String) {
+        self.version = version;
+    }
 
-    pub fn version(&mut self) -> String {
-        let s = self.reader.as_mut().unwrap();
-        (*s.borrow_mut()).version().to_string()
+    pub fn version(&mut self) -> &str {
+        self.version.as_ref()
     }
 
     /// 获取目录
@@ -602,8 +615,6 @@ fn flatten_nav(nav: &[EpubNav]) -> Vec<&EpubNav> {
     n
 }
 pub(crate) trait EpubReaderTrait {
-    fn version(&mut self) -> &str;
-
     fn read(&mut self, book: &mut EpubBook) -> IResult<()>;
     ///
     /// file epub中的文件目录
@@ -619,7 +630,7 @@ pub(crate) trait EpubReaderTrait {
 #[cfg(test)]
 mod tests {
 
-    use crate::{epub::writer::EpubWriterTrait, prelude::*};
+    use crate::prelude::*;
 
     #[test]
     fn write_assets() {
