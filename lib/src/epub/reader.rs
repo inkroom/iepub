@@ -326,9 +326,9 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                             if attr.key.as_ref() == b"version" {
                                 let ver = attr.unescape_value()?.trim().to_string();
                                 if ver.len() > 0 {
-                                    book.set_version(ver);
+                                    book.set_version(&ver);
                                 } else {
-                                    book.set_version(String::from("2.0"));
+                                    book.set_version("2.0");
                                 }
                             }
                         }

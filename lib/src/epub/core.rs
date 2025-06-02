@@ -532,8 +532,9 @@ impl EpubBook {
             return s.file_name() == file_name;
         })
     }
-    pub fn set_version(&mut self, version: String) {
-        self.version = version;
+    pub fn set_version(&mut self, version: &str) {
+        self.version.clear();
+        self.version.push_str(version);
     }
 
     pub fn version(&mut self) -> &str {
@@ -664,6 +665,7 @@ mod tests {
 
         book.add_nav(n);
         book.add_nav(n1);
+        book.set_version("2.0");
         // 添加章节
         let mut chap = EpubHtml::default();
         chap.set_file_name("chaps/0.xhtml");
