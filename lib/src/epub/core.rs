@@ -1,8 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -199,10 +198,8 @@ impl EpubAssets {
         self._data.as_deref()
     }
 
-    pub fn save(&mut self, path: &str) -> IResult<()> {
+    pub fn write_to<W: Write>(&mut self, writer: &mut W) -> IResult<()> {
         if let Some(data) = self.data() {
-            let file = File::create(path)?;
-            let mut writer = BufWriter::new(file);
             writer.write_all(&data)?;
             writer.flush()?;
         }
