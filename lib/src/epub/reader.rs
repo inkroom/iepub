@@ -1,6 +1,8 @@
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
 use std::collections::VecDeque;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::{
     io::{Read, Seek},
     ops::Deref,
@@ -757,6 +759,24 @@ impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
         let mut content = String::new();
         invalid!(file.read_to_string(&mut content), "read err");
         Ok(content)
+    }
+
+    fn read_to_path(&mut self, file_name: &str, file_path: &str) -> IResult<()> {
+        let mut file = self
+            .inner
+            .by_name(file_name)
+            .or(Err(IError::FileNotFound))?;
+        let output_file = File::create(file_path)?;
+        let mut writer = BufWriter::new(output_file);
+        let mut buffer = [0u8; 16384];
+        loop {
+            let bytes_read = file.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            writer.write_all(&buffer[..bytes_read])?;
+        }
+        Ok(())
     }
 }
 

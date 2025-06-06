@@ -184,11 +184,10 @@ impl EpubAssets {
     pub fn data(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            let prefixs = vec!["", common::EPUB, "EPUB/"];
+            let prefixs = vec!["", common::EPUB, common::EPUB3];
             if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
                 for prefix in prefixs.iter() {
                     let s = self.reader.as_mut().unwrap();
-
                     // 添加 前缀再次读取
                     f = format!("{prefix}{}", self._file_name);
                     let d = (*s.borrow_mut()).read_file(f.as_str());
@@ -206,6 +205,22 @@ impl EpubAssets {
         if let Some(data) = self.data() {
             writer.write_all(&data)?;
             writer.flush()?;
+        }
+        Ok(())
+    }
+
+    pub fn save_to(&mut self, file_path: &str) -> IResult<()> {
+        let mut f = String::from(self._file_name.as_str());
+        if self.reader.is_some() && !f.is_empty() {
+            let prefixs = vec!["", common::EPUB, common::EPUB3];
+            for prefix in prefixs.iter() {
+                let s = self.reader.as_mut().unwrap();
+                f = format!("{prefix}{}", self._file_name);
+                let d: Result<(), IError> = (*s.borrow_mut()).read_to_path(f.as_str(), file_path);
+                if d.is_ok() {
+                    break;
+                }
+            }
         }
         Ok(())
     }
@@ -634,6 +649,11 @@ pub(crate) trait EpubReaderTrait {
     /// file epub中的文件目录
     ///
     fn read_string(&mut self, file_name: &str) -> IResult<String>;
+
+    ///
+    /// file epub中的文件目录
+    ///
+    fn read_to_path(&mut self, file_name: &str, file_path: &str) -> IResult<()>;
 }
 
 #[cfg(test)]
