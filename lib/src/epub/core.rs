@@ -90,6 +90,12 @@ impl EpubHtml {
         self._data.as_deref()
     }
 
+    pub fn release_data(&mut self) {
+        if let Some(data) = &mut self._data {
+            data.clear();
+        }
+    }
+
     pub fn format(&mut self) -> Option<String> {
         self.data();
         Some(to_html(self, false))
@@ -202,6 +208,12 @@ impl EpubAssets {
             writer.flush()?;
         }
         Ok(())
+    }
+
+    pub fn release_data(&mut self) {
+        if let Some(data) = &mut self._data {
+            data.clear();
+        }
     }
 }
 
