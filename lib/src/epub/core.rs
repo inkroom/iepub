@@ -63,7 +63,7 @@ impl EpubHtml {
             (None, self.file_name().to_string())
         };
         let mut f = String::from(self._file_name.as_str());
-        let prefixs = vec!["", common::EPUB, "EPUB/"];
+        let prefixs = vec!["", common::EPUB, common::EPUB3];
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
             for prefix in prefixs.iter() {
                 // 添加 前缀再次读取
@@ -101,20 +101,30 @@ impl EpubHtml {
         Some(to_html(self, false))
     }
 
-    ///
-    /// 获取数据，当处于读模式时自动读取epub文件内容
-    ///
-    fn read_data(&mut self) -> Option<&[u8]> {
-        let f = self._file_name.as_str();
-        if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            // 可读
-            // let d = self.reader.as_mut().unwrap().read_file(f);
-            // if let Ok(v) = d {
-            //     self.set_data(v);
-            // }
+    pub fn raw_data(&mut self) -> Option<String> {
+        let mut raw = None;
+        let (id, origin) = if let Some(index) = self._file_name.find(|f| f == '#') {
+            (
+                Some(&self._file_name[(index + 1)..]),
+                self._file_name[0..index].to_string(),
+            )
+        } else {
+            (None, self.file_name().to_string())
+        };
+        let mut f = String::from(self._file_name.as_str());
+        let prefixs = vec!["", common::EPUB, common::EPUB3];
+        if raw.is_none() && self.reader.is_some() && !f.is_empty() {
+            for prefix in prefixs.iter() {
+                // 添加 前缀再次读取
+                f = format!("{prefix}{origin}");
+                let s = self.reader.as_mut().unwrap();
+                let d = (*s.borrow_mut()).read_string(f.as_str());
+                if let Ok(str) = d {
+                    raw = Some(str);
+                }
+            }
         }
-
-        self._data.as_deref()
+        raw
     }
 
     pub fn set_title(&mut self, title: &str) {
