@@ -899,21 +899,25 @@ mod tests {
         let chapter = nb.get_chapter("0.xhtml");
         // assert_ne!(None, chapter);
         assert!(chapter.is_some());
-        let c = &mut chapter.unwrap();
 
-        let data = c.data();
-
-        assert!(data.is_some());
-        let d = String::from_utf8(data.unwrap().to_vec()).unwrap();
-        println!("d [{}]", d);
-
-        assert_eq!(
-            r#"
+        if let Some(c) = chapter {
+            //body data
+            let data = c.data();
+            assert!(data.is_some());
+            let d = String::from_utf8(data.unwrap().to_vec()).unwrap();
+            println!("d [{}]", d);
+            assert_eq!(
+                r#"
     <h1 style="text-align: center">ok</h1>
 html
   "#,
-            d
-        );
+                d
+            );
+
+            //raw_data
+            let raw_data = c.raw_data();
+            assert!(raw_data.is_some());
+        }
 
         for a in nb.assets_mut() {
             println!(

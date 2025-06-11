@@ -34,6 +34,8 @@ epub_base_field! {
         title: String,
         /// 自定义的css，会被添加到link下
         css: Option<String>,
+        /// 文件初始内容
+        raw_data:Option<String>,
     }
 }
 
@@ -101,8 +103,7 @@ impl EpubHtml {
         Some(to_html(self, false))
     }
 
-    pub fn raw_data(&mut self) -> Option<String> {
-        let mut raw = None;
+    pub fn raw_data(&mut self) -> Option<&str> {
         let (id, origin) = if let Some(index) = self._file_name.find(|f| f == '#') {
             (
                 Some(&self._file_name[(index + 1)..]),
@@ -113,18 +114,24 @@ impl EpubHtml {
         };
         let mut f = String::from(self._file_name.as_str());
         let prefixs = vec!["", common::EPUB, common::EPUB3];
-        if raw.is_none() && self.reader.is_some() && !f.is_empty() {
+        if self.raw_data.is_none() && self.reader.is_some() && !f.is_empty() {
             for prefix in prefixs.iter() {
                 // 添加 前缀再次读取
                 f = format!("{prefix}{origin}");
                 let s = self.reader.as_mut().unwrap();
                 let d = (*s.borrow_mut()).read_string(f.as_str());
-                if let Ok(str) = d {
-                    raw = Some(str);
+                if let Ok(data) = d {
+                    self.raw_data = Some(data);
                 }
             }
         }
-        raw
+        self.raw_data.as_deref()
+    }
+
+    pub fn release_raw_data(&mut self) {
+        if let Some(data) = &mut self.raw_data {
+            data.clear();
+        }
     }
 
     pub fn set_title(&mut self, title: &str) {
