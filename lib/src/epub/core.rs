@@ -98,6 +98,7 @@ impl EpubHtml {
         if let Some(data) = &mut self._data {
             data.clear();
         }
+        self._data = None;
     }
 
     pub fn format(&mut self) -> Option<String> {
@@ -248,6 +249,7 @@ impl EpubAssets {
         if let Some(data) = &mut self._data {
             data.clear();
         }
+        self._data = None;
     }
 }
 

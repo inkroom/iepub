@@ -41,8 +41,38 @@ pub mod prelude {
     }
 
     pub mod adapter {
+        pub use crate::adapter::core::concat::add_into_epub;
         pub use crate::adapter::core::epub_to_mobi;
         pub use crate::adapter::core::mobi_to_epub;
-        pub use crate::adapter::core::concat::add_into_epub;
+    }
+}
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_req() {
+        use ureq::{Agent, Proxy};
+        // Configure a SOCKS proxy.
+        // let proxy = Proxy::new("socks5://user:password@cool.proxy:9090").;
+        let agent: Agent = Agent::config_builder()
+        .proxy(Some(Proxy::new("http://192.168.31.239:7890").unwrap()))
+        
+        .build().into();
+
+
+        // This is proxied.
+        let mut resp = agent.get("https://ifconfig.me/ip").call().unwrap();
+        
+        println!("{}", resp.body_mut().read_to_string().unwrap());
+
+
+
+        let v =minreq::get("https://ifconfig.me/ip").send();
+        println!("mint req={}",v.unwrap().as_str().unwrap());
+let v =minreq::get("https://ifconfig.me/ip").with_proxy(minreq::Proxy::new("http://192.168.31.239:7890").unwrap()).send();
+
+        println!("mint req={}",v.unwrap().as_str().unwrap());
+
+
     }
 }
