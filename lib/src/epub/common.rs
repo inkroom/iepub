@@ -25,7 +25,7 @@ macro_rules! epub_base_field{
                 _file_name:String,
                 media_type:String,
                 _data: Option<Vec<u8>>,
-                reader:Option<std::rc::Rc<std::cell::RefCell< Box<dyn EpubReaderTrait>>>>,
+                reader:Option<std::sync::Arc<std::sync::Mutex< Box<dyn EpubReaderTrait+Send+Sync>>>>,
                 $(
                     $(#[$field_meta])*
                     $field_vis $field_name : $field_type,

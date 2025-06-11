@@ -679,7 +679,7 @@ impl<T: Read + Seek> EpubReader<T> {
         Ok(EpubReader { inner: r })
     }
 }
-impl<T: Read + Seek> EpubReaderTrait for EpubReader<T> {
+impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
     fn read(&mut self, book: &mut EpubBook) -> IResult<()> {
         let reader = &mut self.inner;
 
@@ -797,14 +797,14 @@ pub fn read_from_file(file: &str) -> IResult<EpubBook> {
 ///
 /// 从任意reader读取epub
 ///
-pub fn read_from_reader<T: Read + Seek + 'static>(value: T) -> IResult<EpubBook> {
+pub fn read_from_reader<T: Read + Seek + Sync + Send + 'static>(value: T) -> IResult<EpubBook> {
     let reader = EpubReader::new(value)?;
     let mut book = EpubBook::default();
-    let re: std::rc::Rc<std::cell::RefCell<Box<dyn EpubReaderTrait>>> =
-        std::rc::Rc::new(std::cell::RefCell::new(Box::new(reader)));
-    book.set_reader(std::rc::Rc::clone(&re));
+    let re: std::sync::Arc<std::sync::Mutex<Box<dyn EpubReaderTrait + Sync + Send>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Box::new(reader)));
+    book.set_reader(std::sync::Arc::clone(&re));
 
-    (*re.borrow_mut()).read(&mut book)?;
+    re.lock().unwrap().read(&mut book)?;
     Ok(book)
 }
 
