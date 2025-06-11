@@ -246,6 +246,19 @@ pub(crate) fn get_media_type(file_name: &str) -> String {
 
 #[cfg(test)]
 pub(crate) mod tests {
+
+    pub fn get_req(url: &str) -> minreq::Request {
+        let mut req = minreq::get(url);
+        if let Ok(proxy) = std::env::var("HTTPS_PROXY")
+            .or_else(|_e| std::env::var("https_proxy"))
+            .or_else(|_e| std::env::var("ALL_PROXY"))
+            .or_else(|_e| std::env::var("all_proxy"))
+        {
+            req = req.with_proxy(minreq::Proxy:: new(proxy).expect("invalid proxy env"));
+        }
+        req
+    }
+
     pub fn download_epub_file(name: &str, url: &str) {
         use super::IError;
         use std::borrow::Cow;
@@ -256,7 +269,7 @@ pub(crate) mod tests {
         }
         if std::fs::metadata(name).is_err() {
             // 下载并解压
-            tinyget::get(url)
+            get_req(url)
                 .send()
                 .map(|v| v.as_bytes().to_vec())
                 .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
@@ -272,7 +285,7 @@ pub(crate) mod tests {
         if std::fs::metadata(&out).is_err() {
             // 下载并解压
 
-            let mut zip = tinyget::get(url)
+            let mut zip = get_req(url)
                 .send()
                 .map(|v| v.as_bytes().to_vec())
                 .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
@@ -286,11 +299,10 @@ pub(crate) mod tests {
             zip.read_to_end(&mut v).unwrap();
 
             if name.contains("/") {
-                std::fs::create_dir_all( std::path::Path::new(&out).parent().unwrap()).unwrap();
+                std::fs::create_dir_all(std::path::Path::new(&out).parent().unwrap()).unwrap();
             }
             std::fs::write(std::path::Path::new(&out), &mut v).unwrap();
-           
-        } 
-         out
+        }
+        out
     }
 }
