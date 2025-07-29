@@ -1,5 +1,5 @@
 FROM ghcr.io/inkroomtemp/rust_musl_build:1.85.0
-RUN apt update -y && cargo new app
+RUN set -i "s@mirrors.ustc.edu.cn@mirrors.cernet.edu.cn@g" /etc/apt/sources.list.d/debian.sources && apt update -y && cargo new app
 
 WORKDIR /workdir/app
 RUN cargo new derive --lib && cargo new tool && cargo new lib --lib && echo "extern crate proc_macro;" > derive/src/lib.rs
