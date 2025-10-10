@@ -13,6 +13,8 @@ pub mod prelude {
     pub use crate::common::IError;
     pub use crate::common::IResult;
 
+    pub use crate::common::escape_xml;
+
     pub use crate::epub::builder::EpubBuilder;
     pub use crate::epub::common::LinkRel;
     pub use crate::epub::core::EpubAssets;

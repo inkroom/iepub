@@ -1,7 +1,6 @@
 use super::common;
 use crate::{common::get_media_type, prelude::*};
 use quick_xml::events::Event;
-use std::collections::HashMap;
 
 /// 生成html
 pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool) -> String {
@@ -32,7 +31,7 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool) -> String {
         );
         // 正文
     }
-    let title = chap.title();
+    let title = escape_xml(chap.title());
     format!(
         r#"<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
@@ -64,7 +63,7 @@ fn to_nav_xml(nav: std::slice::Iter<EpubNav>) -> String {
                 format!(
                     "<li><a href=\"{}\">{}</a></li>",
                     ele.file_name(),
-                    ele.title()
+                    escape_xml(ele.title()),
                 )
                 .as_str(),
             );
@@ -73,7 +72,7 @@ fn to_nav_xml(nav: std::slice::Iter<EpubNav>) -> String {
                 format!(
                     "<li><a href=\"{}\">{}</a>{}</li>",
                     ele.child().as_slice()[0].file_name(),
-                    ele.title(),
+                    escape_xml(ele.title()),
                     to_nav_xml(ele.child()).as_str()
                 )
                 .as_str(),
@@ -86,6 +85,7 @@ fn to_nav_xml(nav: std::slice::Iter<EpubNav>) -> String {
 
 /// 生成自定义的导航html
 pub(crate) fn to_nav_html(book_title: &str, nav: std::slice::Iter<EpubNav>) -> String {
+    let book_title = escape_xml(book_title);
     format!(
         r#"<?xml version='1.0' encoding='utf-8'?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh" xml:lang="zh"><head><title>{book_title}</title></head><body><nav epub:type="toc" id="id" role="doc-toc"><h2>{book_title}</h2>{}</nav></body></html>"#,
         to_nav_xml(nav)
@@ -100,7 +100,7 @@ fn to_toc_xml_point(nav: std::slice::Iter<EpubNav>, parent: usize) -> String {
             xml.push_str(
                 format!(
                     "<navLabel><text>{}</text></navLabel><content src=\"{}\"></content>",
-                    ele.title(),
+                    escape_xml(ele.title()),
                     ele.file_name()
                 )
                 .as_str(),
@@ -109,7 +109,7 @@ fn to_toc_xml_point(nav: std::slice::Iter<EpubNav>, parent: usize) -> String {
             xml.push_str(
                 format!(
                     "<navLabel><text>{}</text></navLabel><content src=\"{}\"></content>{}",
-                    ele.title(),
+                    escape_xml(ele.title()),
                     ele.child().as_slice()[0].file_name(),
                     to_toc_xml_point(ele.child(), index).as_str()
                 )
@@ -123,6 +123,7 @@ fn to_toc_xml_point(nav: std::slice::Iter<EpubNav>, parent: usize) -> String {
 
 /// 生成epub中的toc.ncx文件
 pub(crate) fn to_toc_xml(book_title: &str, nav: std::slice::Iter<EpubNav>) -> String {
+    let book_title = escape_xml(book_title);
     format!(
         r#"<?xml version='1.0' encoding='utf-8'?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta content="1394" name="dtb:uid"/><meta content="0" name="dtb:depth"/><meta content="0" name="dtb:totalPageCount"/><meta content="0" name="dtb:maxPageNumber"/></head><docTitle><text>{book_title}</text></docTitle><navMap>{}</navMap></ncx>"#,
         to_toc_xml_point(nav, 0)
@@ -144,9 +145,10 @@ fn write_metadata(
     xml.write_event(Event::Start(metadata.borrow()))?;
 
     // metadata 内元素
-    let now = book
-        .last_modify()
-        .map_or_else(|| crate::common::DateTimeFormater::default().default_format(), String::from);
+    let now = book.last_modify().map_or_else(
+        || crate::common::DateTimeFormater::default().default_format(),
+        String::from,
+    );
 
     xml.create_element("meta")
         .with_attribute(("property", "dcterms:modified"))
@@ -533,6 +535,41 @@ ok
     }
 
     #[test]
+    fn test_to_htm_escape() {
+        let mut t = EpubHtml::default();
+        t.set_title(r##"Test Title `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"##);
+        t.set_data(String::from("ok").as_bytes().to_vec());
+        t.set_css("#id{width:10%}");
+        let link = EpubLink {
+            href: String::from("href"),
+            file_type: String::from("css"),
+            rel: LinkRel::CSS,
+        };
+
+        t.add_link(link);
+        let html = to_html(&mut t, true);
+
+        println!("{}", html);
+
+        assert_eq!(
+            html,
+            r###"<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="zh" xml:lang="zh">
+  <head>
+    <title>Test Title `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</title>
+<link href="href" rel="stylesheet" type="text/css"/>
+<style type="text/css">#id{width:10%}</style>
+</head>
+  <body>
+    <h1 style="text-align: center">Test Title `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</h1>
+ok
+  </body>
+</html>"###
+        );
+    }
+
+    #[test]
     fn test_to_nav_html() {
         let mut n = EpubNav::default();
         n.set_title("作品说明");
@@ -563,6 +600,39 @@ ok
     }
 
     #[test]
+    fn test_to_nav_html_escape() {
+        let mut n = EpubNav::default();
+        n.set_title("Test Story `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?");
+        n.set_file_name("file_name");
+
+        let mut n1 = EpubNav::default();
+        n1.set_title("第一卷");
+
+        let mut n2 = EpubNav::default();
+        n2.set_title("第一卷 第一章");
+        n2.set_file_name("0.xhtml");
+
+        let mut n3 = EpubNav::default();
+        n3.set_title("第一卷 第二章");
+        n3.set_file_name("1.xhtml");
+        n1.push(n2);
+
+        let nav = vec![n, n1];
+
+        let html = to_nav_html(
+            "Test Story Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
+            nav.iter(),
+        );
+
+        println!("{}", html);
+
+        assert_eq!(
+            r###"<?xml version='1.0' encoding='utf-8'?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh" xml:lang="zh"><head><title>Test Story Title `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</title></head><body><nav epub:type="toc" id="id" role="doc-toc"><h2>Test Story Title `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</h2><ul><li><a href="file_name">Test Story `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</a></li><li><a href="0.xhtml">第一卷</a><ul><li><a href="0.xhtml">第一卷 第一章</a></li></ul></li></ul></nav></body></html>"###,
+            html
+        );
+    }
+
+    #[test]
     fn test_to_toc_xml() {
         let mut n = EpubNav::default();
         n.set_title("作品说明");
@@ -588,6 +658,39 @@ ok
 
         assert_eq!(
             r###"<?xml version='1.0' encoding='utf-8'?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta content="1394" name="dtb:uid"/><meta content="0" name="dtb:depth"/><meta content="0" name="dtb:totalPageCount"/><meta content="0" name="dtb:maxPageNumber"/></head><docTitle><text>book_title</text></docTitle><navMap><navPoint id="0-0"><navLabel><text>作品说明</text></navLabel><content src="file_name"></content></navPoint><navPoint id="0-1"><navLabel><text>第一卷</text></navLabel><content src="0.xhtml"></content><navPoint id="1-0"><navLabel><text>第一卷 第一章</text></navLabel><content src="0.xhtml"></content></navPoint></navPoint></navMap></ncx>"###,
+            html
+        );
+    }
+
+    #[test]
+    fn test_to_toc_xml_escape() {
+        let mut n = EpubNav::default();
+        n.set_title("Test Story `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?");
+        n.set_file_name("file_name");
+
+        let mut n1 = EpubNav::default();
+        n1.set_title("第一卷");
+
+        let mut n2 = EpubNav::default();
+        n2.set_title("第一卷 第一章");
+        n2.set_file_name("0.xhtml");
+
+        let mut n3 = EpubNav::default();
+        n3.set_title("第一卷 第二章");
+        n3.set_file_name("1.xhtml");
+        n1.push(n2);
+
+        let nav = vec![n, n1];
+
+        let html = to_toc_xml(
+            "Test Story Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
+            nav.iter(),
+        );
+
+        println!("{}", html);
+
+        assert_eq!(
+            r###"<?xml version='1.0' encoding='utf-8'?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta content="1394" name="dtb:uid"/><meta content="0" name="dtb:depth"/><meta content="0" name="dtb:totalPageCount"/><meta content="0" name="dtb:maxPageNumber"/></head><docTitle><text>Test Story Title `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</text></docTitle><navMap><navPoint id="0-0"><navLabel><text>Test Story `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</text></navLabel><content src="file_name"></content></navPoint><navPoint id="0-1"><navLabel><text>第一卷</text></navLabel><content src="0.xhtml"></content><navPoint id="1-0"><navLabel><text>第一卷 第一章</text></navLabel><content src="0.xhtml"></content></navPoint></navPoint></navMap></ncx>"###,
             html
         );
     }

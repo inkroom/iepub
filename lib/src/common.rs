@@ -202,6 +202,32 @@ pub(crate) fn unescape_html(v: &str) -> String {
     txt
 }
 
+/// Escapes an `&str` and replaces all xml special characters (`<`, `>`, `&`, `'`, `"`)
+/// with their corresponding xml escaped value.
+///
+/// This function performs following replacements:
+///
+/// | Character | Replacement
+/// |-----------|------------
+/// | `<`       | `&lt;`
+/// | `>`       | `&gt;`
+/// | `&`       | `&amp;`
+/// | `'`       | `&apos;`
+/// | `"`       | `&quot;`
+///
+/// This function performs following replacements:
+///
+/// | Character | Replacement
+/// |-----------|------------
+/// | `<`       | `&lt;`
+/// | `>`       | `&gt;`
+/// | `&`       | `&amp;`
+/// | `'`       | `&apos;`
+/// | `"`       | `&quot;`
+pub fn escape_xml<'a>(raw: impl Into<Cow<'a, str>>) -> Cow<'a, str> {
+    quick_xml::escape::escape(raw)
+}
+
 pub struct DateTimeFormater {
     timestamp: u64,
     start_year: u64,

@@ -1047,4 +1047,47 @@ html
             assert_ne!(0, ele.data_mut().unwrap().len());
         }
     }
+
+    #[test]
+    fn test_read_escaped() {
+        let f = if std::path::Path::new("target").exists() {
+            "target/es.epub"
+        } else {
+            "../target/es.epub"
+        };
+
+        EpubBuilder::default()
+            .with_title("Test Story `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?")
+            .with_creator("Test Creator `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?")
+            .with_date("2024-03-14")
+            .with_description("Test Description `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?")
+            .with_identifier("isbn")
+            .with_publisher("Test Publisher `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?")
+            .add_chapter(
+                EpubHtml::default()
+                    .with_file_name("0.xml")
+                    .with_title("Test Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?")
+                    .with_data("<p>Test Content </p>".as_bytes().to_vec()),
+            )
+            .add_assets("1.css", "p{color:red}".as_bytes().to_vec())
+            .metadata("s", "d")
+            .metadata("h", "m")
+            .file(f)
+            .unwrap();
+        let mut book = read_from_file(f).unwrap();
+        assert_eq!(1, book.nav().len());
+        assert_eq!(
+            "1. Test Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
+            book.nav().next().unwrap().title()
+        );
+
+        assert_eq!(
+            "Test Story `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
+            book.title()
+        );
+        assert_eq!(
+            "Test Publisher `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
+            book.publisher().unwrap()
+        );
+    }
 }
