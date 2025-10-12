@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::prelude::*;
+use crate::{epub::core::Direction, prelude::*};
 
 ///
 /// 简化epub构建
@@ -117,7 +117,11 @@ impl EpubBuilder {
         self.font_byte = Some(font);
         self
     }
-
+    /// 设置方向
+    pub fn with_direction(mut self, dir: Direction) -> Self {
+        self.book.set_direction(dir);
+        self
+    }
     ///
     /// 添加 metadata
     ///
@@ -190,7 +194,7 @@ impl EpubBuilder {
                 // 不能一次循环直接添加，因为会出现重复借用
                 nav.push(
                     EpubNav::default()
-                        .with_title(format!("{}. {}",index + 1 , ele.title()))
+                        .with_title(format!("{}. {}", index + 1, ele.title()))
                         .with_file_name(ele.file_name()),
                 );
             }
@@ -203,7 +207,8 @@ impl EpubBuilder {
 
     fn gen_last_modify(&mut self) {
         if self.book.last_modify().is_none() {
-            self.book.set_last_modify(&crate::common::DateTimeFormater::default().default_format());
+            self.book
+                .set_last_modify(&crate::common::DateTimeFormater::default().default_format());
         }
     }
 
@@ -297,7 +302,6 @@ impl EpubBuilder {
         // Return the `User`.
         Ok(builder)
     }
-
 }
 
 #[cfg(test)]
@@ -334,11 +338,19 @@ mod tests {
             .with_description("一本好书")
             .with_identifier("isbn")
             .with_publisher("行星出版社")
+            .with_direction(crate::prelude::Direction::RTL)
             .add_chapter(
                 EpubHtml::default()
                     .with_file_name("0.xml")
                     .with_title("第一章")
                     .with_data("<p>锻炼</p>".to_string().as_bytes().to_vec()),
+            )
+            .add_chapter(
+                EpubHtml::default()
+                    .with_file_name("1.xml")
+                    .with_title("第二章")
+                    .with_direction(crate::prelude::Direction::LTR)
+                    .with_data("<p>锻炼33333</p>".to_string().as_bytes().to_vec()),
             )
             .add_assets("1.css", "p{color:red}".to_string().as_bytes().to_vec())
             .metadata("s", "d")

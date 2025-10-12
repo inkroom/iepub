@@ -15,8 +15,9 @@
 - （推荐）使用`EpubBuilder`快速生成
 
 ```rust
-use iepub::EpubHtml;
-use iepub::EpubBuilder;
+use iepub::prelude::EpubHtml;
+use iepub::prelude::EpubBuilder;
+use iepub::prelude::Direction;
 
 EpubBuilder::default()
     .with_title("书名")
@@ -25,10 +26,19 @@ EpubBuilder::default()
     .with_description("一本好书")
     .with_identifier("isbn")
     .with_publisher("行星出版社")
+    .with_direction(Direction::RTL)
     .add_chapter(
         EpubHtml::default()
             .with_file_name("0.xml")
+            .with_title("第一章")
             .with_data("<p>锻炼</p>".to_string().as_bytes().to_vec()),
+    )
+    .add_chapter(
+        EpubHtml::default()
+            .with_file_name("1.xml")
+            .with_title("第二章")
+            .with_direction(crate::prelude::Direction::LTR)
+            .with_data("<p>锻炼33333</p>".to_string().as_bytes().to_vec()),
     )
     .add_assets("1.css", "p{color:red}".to_string().as_bytes().to_vec())
     .metadata("s", "d")

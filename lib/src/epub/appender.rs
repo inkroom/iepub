@@ -86,6 +86,7 @@ mod tests {
                 .with_description("一本好书")
                 .with_identifier("isbn")
                 .with_publisher("行星出版社")
+                .with_direction(Direction::LTR)
                 .with_last_modify("last_modify")
                 .add_assets("style.css", "ok".as_bytes().to_vec())
                 .add_chapter(

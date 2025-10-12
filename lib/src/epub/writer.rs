@@ -148,13 +148,14 @@ impl<T: Write + Seek> EpubWriter<T> {
 
     /// 写入章节文件
     fn write_chapters(&mut self, book: &mut EpubBook) -> IResult<()> {
+        let dir = book.direction.as_ref().cloned();
         let chap = book.chapters_mut();
         for ele in chap {
             if ele.data_mut().is_none() {
                 continue;
             }
 
-            let html = to_html(ele, self.append_title);
+            let html = to_html(ele, self.append_title, &dir);
 
             self.write_file(
                 format!("{}{}", common::EPUB, ele.file_name()).as_str(),
@@ -169,7 +170,13 @@ impl<T: Write + Seek> EpubWriter<T> {
         // 目录包括两部分，一是自定义的用于书本导航的html，二是epub规范里的toc.ncx文件
         self.write_file(
             common::NAV,
-            to_nav_html(book.title(), book.nav()).as_bytes(),
+            to_nav_html(
+                book.title(),
+                book.nav(),
+                book.language().unwrap_or(""),
+                &book.direction,
+            )
+            .as_bytes(),
         )?;
         self.write_file(common::TOC, to_toc_xml(book.title(), book.nav()).as_bytes())?;
 
@@ -195,7 +202,10 @@ impl<T: Write + Seek> EpubWriter<T> {
                     .to_vec(),
             );
             html.set_title("Cover");
-            self.write_file(common::COVER, to_html(&mut html, false).as_bytes())?;
+            self.write_file(
+                common::COVER,
+                to_html(&mut html, false, &book.direction).as_bytes(),
+            )?;
         }
         Ok(())
     }

@@ -3,7 +3,7 @@ use crate::{common::get_media_type, prelude::*};
 use quick_xml::events::Event;
 
 /// 生成html
-pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool) -> String {
+pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool, dir: &Option<Direction>) -> String {
     let mut css = String::new();
     if let Some(links) = chap.links() {
         for ele in links {
@@ -31,11 +31,18 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool) -> String {
         );
         // 正文
     }
+    let mut dir_s = String::new();
+    if let Some(d) = &chap.direction {
+        dir_s = format!(r#" dir="{d}""#);
+    } else if let Some(d) = dir {
+        dir_s = format!(r#" dir="{d}""#);
+    }
+    let lang = chap.lang.as_str();
     let title = escape_xml(chap.title());
     format!(
         r#"<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="zh" xml:lang="zh">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="{lang}" xml:lang="{lang}"{dir_s}>
   <head>
     <title>{title}</title>
 {css}
@@ -84,10 +91,20 @@ fn to_nav_xml(nav: std::slice::Iter<EpubNav>) -> String {
 }
 
 /// 生成自定义的导航html
-pub(crate) fn to_nav_html(book_title: &str, nav: std::slice::Iter<EpubNav>) -> String {
+pub(crate) fn to_nav_html(
+    book_title: &str,
+    nav: std::slice::Iter<EpubNav>,
+    lang: &str,
+    dir: &Option<Direction>,
+) -> String {
     let book_title = escape_xml(book_title);
     format!(
-        r#"<?xml version='1.0' encoding='utf-8'?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh" xml:lang="zh"><head><title>{book_title}</title></head><body><nav epub:type="toc" id="id" role="doc-toc"><h2>{book_title}</h2>{}</nav></body></html>"#,
+        r#"<?xml version='1.0' encoding='utf-8'?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{lang}" xml:lang="{lang}"{}><head><title>{book_title}</title></head><body><nav epub:type="toc" id="id" role="doc-toc"><h2>{book_title}</h2>{}</nav></body></html>"#,
+        if let Some(d) = dir {
+            format!(r#" dir="{d}""#)
+        } else {
+            String::new()
+        },
         to_nav_xml(nav)
     )
 }
@@ -317,6 +334,9 @@ pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String>
 
     let mut spine = BytesStart::new("spine");
     spine.push_attribute(("toc", "ncx"));
+    if let Some(dir) = &book.direction {
+        spine.push_attribute(("page-progression-direction", format!("{dir}").as_str()));
+    }
     xml.write_event(Event::Start(spine.borrow()))?;
     // 把导航放第一个 nav
     xml.create_element("itemref")
@@ -353,9 +373,16 @@ pub(crate) fn to_opf(book: &mut EpubBook, generator: &str) -> String {
 ///
 /// 第一个是title
 /// 第二个是正文
+/// 第三个是language
+/// 第四个是direction
 ///
-pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<(String, Vec<u8>)> {
+pub(crate) fn get_html_info(
+    html: &str,
+    id: Option<&str>,
+) -> IResult<(String, Vec<u8>, Option<String>, Option<Direction>)> {
     use quick_xml::reader::Reader;
+    let mut lang = None;
+    let mut direction = None;
     let mut title = String::new();
     let mut content = Vec::new();
     let mut reader = Reader::from_str(html);
@@ -374,6 +401,31 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<(String, Ve
             Ok(Event::Start(body)) => match body.name().as_ref() {
                 b"html" => {
                     parent.push("html");
+                    // 尝试获取lang
+                    if let Ok(href) = body.try_get_attribute("lang") {
+                        if let Some(h) = href.map(|f| {
+                            f.unescape_value()
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        }) {
+                            lang = Some(h);
+                        }
+                    }
+                    if let Ok(href) = body.try_get_attribute("xml:lang") {
+                        if let Some(h) = href.map(|f| {
+                            f.unescape_value()
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        }) {
+                            lang = Some(h);
+                        }
+                    }
+                    if let Ok(href) = body.try_get_attribute("dir") {
+                        if let Some(h) = href.map(|f| {
+                            f.unescape_value()
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        }) {
+                            direction = Some(Direction::from(h))
+                        }
+                    }
                 }
                 b"head" => {
                     if parent.len() != 1 || parent[0] != "html" {
@@ -441,7 +493,7 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<(String, Ve
             content.append(&mut b);
         }
     }
-    Ok((title, content))
+    Ok((title, content, lang, direction))
 }
 
 /// epub3 将所有正文放到一个文件里，不同的section代表不同的章节
@@ -494,10 +546,29 @@ fn get_section_from_html(body: &str, id: &str) -> IResult<Vec<u8>> {
 #[cfg(test)]
 mod test {
 
-    use super::{get_html_info, get_media_type, get_section_from_html, to_html, to_toc_xml};
+    use super::{get_html_info, get_media_type, to_html, to_toc_xml};
     use super::{to_nav_html, to_opf};
     use crate::common::tests::download_zip_file;
     use crate::prelude::*;
+
+    impl PartialEq<Direction> for Direction {
+        fn eq(&self, other: &Direction) -> bool {
+            match (self, other) {
+                (Self::CUS(l0), Self::CUS(r0)) => l0 == r0,
+                _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            }
+        }
+    }
+
+    impl PartialEq<Option<Direction>> for Direction {
+        fn eq(&self, other: &Option<Direction>) -> bool {
+            if let Some(o) = other {
+                format!("{o}") == format!("{}", self)
+            } else {
+                false
+            }
+        }
+    }
 
     #[test]
     fn test_to_html() {
@@ -505,6 +576,7 @@ mod test {
         t.set_title("title");
         t.set_data(String::from("ok").as_bytes().to_vec());
         t.set_css("#id{width:10%}");
+        t.set_language("zh");
         let link = EpubLink {
             href: String::from("href"),
             file_type: String::from("css"),
@@ -512,7 +584,7 @@ mod test {
         };
 
         t.add_link(link);
-        let html = to_html(&mut t, true);
+        let html = to_html(&mut t, true, &None);
 
         println!("{}", html);
 
@@ -532,6 +604,50 @@ ok
   </body>
 </html>"###
         );
+
+        // test dir
+        t.set_direction(Direction::RTL);
+        let html = to_html(&mut t, true, &None);
+
+        println!("{}", html);
+
+        assert_eq!(
+            html,
+            r###"<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="zh" xml:lang="zh" dir="rtl">
+  <head>
+    <title>title</title>
+<link href="href" rel="stylesheet" type="text/css"/>
+<style type="text/css">#id{width:10%}</style>
+</head>
+  <body>
+    <h1 style="text-align: center">title</h1>
+ok
+  </body>
+</html>"###
+        );
+
+        // 测试优先级
+        t.set_direction(Direction::LTR);
+        let html = to_html(&mut t, true, &Some(Direction::RTL));
+
+        assert_eq!(
+            html,
+            r###"<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="zh" xml:lang="zh" dir="ltr">
+  <head>
+    <title>title</title>
+<link href="href" rel="stylesheet" type="text/css"/>
+<style type="text/css">#id{width:10%}</style>
+</head>
+  <body>
+    <h1 style="text-align: center">title</h1>
+ok
+  </body>
+</html>"###
+        );
     }
 
     #[test]
@@ -540,6 +656,7 @@ ok
         t.set_title(r##"Test Title `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"##);
         t.set_data(String::from("ok").as_bytes().to_vec());
         t.set_css("#id{width:10%}");
+        t.set_language("zh");
         let link = EpubLink {
             href: String::from("href"),
             file_type: String::from("css"),
@@ -547,7 +664,7 @@ ok
         };
 
         t.add_link(link);
-        let html = to_html(&mut t, true);
+        let html = to_html(&mut t, true, &None);
 
         println!("{}", html);
 
@@ -589,12 +706,21 @@ ok
 
         let nav = vec![n, n1];
 
-        let html = to_nav_html("book_title", nav.iter());
+        let html = to_nav_html("book_title", nav.iter(), "zh", &None);
 
         println!("{}", html);
 
         assert_eq!(
             r###"<?xml version='1.0' encoding='utf-8'?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh" xml:lang="zh"><head><title>book_title</title></head><body><nav epub:type="toc" id="id" role="doc-toc"><h2>book_title</h2><ul><li><a href="file_name">作品说明</a></li><li><a href="0.xhtml">第一卷</a><ul><li><a href="0.xhtml">第一卷 第一章</a></li></ul></li></ul></nav></body></html>"###,
+            html
+        );
+
+        let html = to_nav_html("book_title", nav.iter(), "en", &Some(Direction::RTL));
+
+        println!("{}", html);
+
+        assert_eq!(
+            r###"<?xml version='1.0' encoding='utf-8'?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en" xml:lang="en" dir="rtl"><head><title>book_title</title></head><body><nav epub:type="toc" id="id" role="doc-toc"><h2>book_title</h2><ul><li><a href="file_name">作品说明</a></li><li><a href="0.xhtml">第一卷</a><ul><li><a href="0.xhtml">第一卷 第一章</a></li></ul></li></ul></nav></body></html>"###,
             html
         );
     }
@@ -622,6 +748,8 @@ ok
         let html = to_nav_html(
             "Test Story Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
             nav.iter(),
+            "zh",
+            &None,
         );
 
         println!("{}", html);
@@ -750,6 +878,15 @@ ok
 
         let ass: &str = r###"<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><meta property="dcterms:modified">2024-06-28T03:07:07UTC</meta><dc:date id="date">2024-06-28T08:07:07UTC</dc:date><meta name="generator" content="epub-rs"/><dc:identifier id="id">identifier</dc:identifier><dc:title>中文</dc:title><dc:creator id="creator">作者</dc:creator><dc:description>description</dc:description><meta property="desc">description</meta><meta name="cover" content="cover-img"/><dc:format id="format">format</dc:format><dc:publisher id="publisher">publisher</dc:publisher><dc:subject id="subject">subject</dc:subject><dc:contributor id="contributor">contributor</dc:contributor><meta ok="ov">new</meta></metadata><manifest><item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/><item href="nav.xhtml" id="toc" media-type="application/xhtml+xml" properties="nav"/><item href="" id="cover-img" media-type="" properties="cover-image"/><item href="cover.xhtml" id="cover" media-type="application/xhtml+xml"/><item href="1.png" id="assets_0" media-type="image/png"/><item href="2.png" id="assets_1" media-type="image/png"/><item href="" id="chap_0" media-type="application/xhtml+xml"/></manifest><spine toc="ncx"><itemref idref="toc"/><itemref idref="chap_0"/></spine></package>"###;
         assert_eq!(ass, res.as_str());
+
+        // direction
+        epub.set_direction(Direction::RTL);
+
+        let res = to_opf(&mut epub, "epub-rs");
+        println!("[{}]", res);
+
+        let ass: &str = r###"<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><meta property="dcterms:modified">2024-06-28T03:07:07UTC</meta><dc:date id="date">2024-06-28T08:07:07UTC</dc:date><meta name="generator" content="epub-rs"/><dc:identifier id="id">identifier</dc:identifier><dc:title>中文</dc:title><dc:creator id="creator">作者</dc:creator><dc:description>description</dc:description><meta property="desc">description</meta><meta name="cover" content="cover-img"/><dc:format id="format">format</dc:format><dc:publisher id="publisher">publisher</dc:publisher><dc:subject id="subject">subject</dc:subject><dc:contributor id="contributor">contributor</dc:contributor><meta ok="ov">new</meta></metadata><manifest><item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/><item href="nav.xhtml" id="toc" media-type="application/xhtml+xml" properties="nav"/><item href="" id="cover-img" media-type="" properties="cover-image"/><item href="cover.xhtml" id="cover" media-type="application/xhtml+xml"/><item href="1.png" id="assets_0" media-type="image/png"/><item href="2.png" id="assets_1" media-type="image/png"/><item href="" id="chap_0" media-type="application/xhtml+xml"/></manifest><spine toc="ncx" page-progression-direction="rtl"><itemref idref="toc"/><itemref idref="chap_0"/></spine></package>"###;
+        assert_eq!(ass, res.as_str());
     }
 
     #[test]
@@ -768,7 +905,7 @@ ok
 
     #[test]
     fn test_get_html_info() {
-        let (title, data) = get_html_info(
+        let (title, data, lang, direction) = get_html_info(
             r"<html>
     <head><title> 测试标题 </title></head>
     <body>
@@ -779,6 +916,8 @@ ok
         )
         .unwrap();
 
+        assert_eq!(None, direction);
+        assert_eq!(None, lang);
         assert_eq!(r"测试标题", title);
 
         assert_eq!(
@@ -793,10 +932,52 @@ ok
 
         let html = std::fs::read_to_string(download_zip_file(name, "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub")).unwrap();
 
-        let (title, data) = get_html_info(html.as_str(), Some("pgepubid00495")).unwrap();
+        let (title, data, lang, direction) =
+            get_html_info(html.as_str(), Some("pgepubid00495")).unwrap();
 
         assert_eq!(3324, data.len());
 
+        // 测试lang
+
+        let (title, data, lang, direction) = get_html_info(
+            r#"<html lang="zh" dir="rtl">
+    <head><title> 测试标题 </title></head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!("zh", lang.unwrap());
+        assert_eq!(Direction::RTL, direction);
+
+        let (title, data, lang, direction) = get_html_info(
+            r#"<html xml:lang="zh" dir="ltR">
+    <head><title> 测试标题 </title></head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+        assert_eq!(Direction::LTR, direction);
+        assert_eq!("zh", lang.unwrap());
+
+        let (title, data, lang, direction) = get_html_info(
+            r#"<html xml:lang="en" lang="zh" dir="cis">
+    <head><title> 测试标题 </title></head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+        assert_eq!(Direction::CUS("cis".to_string()), direction);
+        assert_eq!("en", lang.unwrap());
         // assert_ne!(None, chap.data());
         // assert_ne!(0, chap.data().unwrap().len());
     }

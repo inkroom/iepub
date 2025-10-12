@@ -17,6 +17,7 @@ pub mod prelude {
 
     pub use crate::epub::builder::EpubBuilder;
     pub use crate::epub::common::LinkRel;
+    pub use crate::epub::core::Direction;
     pub use crate::epub::core::EpubAssets;
     pub use crate::epub::core::EpubBook;
     pub use crate::epub::core::EpubHtml;

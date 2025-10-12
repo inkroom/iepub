@@ -6,8 +6,39 @@ use std::sync::{Arc, Mutex};
 use super::common::{self};
 use super::html::{get_html_info, to_html};
 use crate::cache_struct;
-use crate::common::{IError, IResult};
+use crate::common::{escape_xml, IError, IResult};
 use crate::epub::common::LinkRel;
+crate::cache_enum!{
+    #[derive(Clone)]
+    pub enum Direction {
+        RTL,
+        LTR,
+        CUS(String),
+    }
+}
+
+
+impl Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Direction::RTL => f.write_str("rtl"),
+            Direction::LTR => f.write_str("ltr"),
+            Direction::CUS(v) => f.write_fmt(format_args!("{}", escape_xml(v))),
+        }
+    }
+}
+
+impl From<String> for Direction {
+    fn from(value: String) -> Self {
+        if value.eq_ignore_ascii_case("rtl") {
+            Direction::RTL
+        } else if value.eq_ignore_ascii_case("ltr") {
+            Direction::LTR
+        } else {
+            Direction::CUS(value)
+        }
+    }
+}
 
 pub(crate) mod info {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -109,7 +140,7 @@ crate::cache_struct! {
 epub_base_field! {
     #[derive(Default)]
     pub struct EpubHtml {
-        pub lang: String,
+        pub(crate) lang: String,
         links: Option<Vec<EpubLink>>,
         /// 章节名称
         title: String,
@@ -117,6 +148,8 @@ epub_base_field! {
         css: Option<String>,
         /// 文件初始内容
         raw_data:Option<String>,
+        /// 方向
+       pub(crate) direction:Option<Direction>,
     }
 }
 
@@ -171,11 +204,15 @@ impl EpubHtml {
                 let d = s.lock().unwrap().read_string(f.as_str());
                 match d {
                     Ok(v) => {
-                        if let Ok((title, data)) = get_html_info(v.as_str(), id) {
+                        if let Ok((title, data, lang, direction)) = get_html_info(v.as_str(), id) {
                             if !title.is_empty() {
                                 self.set_title(&title);
                             }
                             self.set_data(data);
+                            if let Some(lang) = lang {
+                                self.set_language(lang);
+                            }
+                            self.direction = direction;
                         }
                         break;
                     }
@@ -198,7 +235,7 @@ impl EpubHtml {
 
     pub fn format(&mut self) -> Option<String> {
         self.data_mut();
-        Some(to_html(self, false))
+        Some(to_html(self, false, &None))
     }
 
     pub fn raw_data(&mut self) -> Option<&str> {
@@ -258,8 +295,13 @@ impl EpubHtml {
         self.css.as_deref()
     }
 
-    fn set_language<T: Into<String>>(&mut self, lang: T) {
+    pub fn set_language<T: Into<String>>(&mut self, lang: T) {
         self.lang = lang.into();
+    }
+
+    pub fn with_language<T: Into<String>>(mut self, lang: T) -> Self {
+        self.set_language(lang);
+        self
     }
 
     pub fn links(&self) -> Option<std::slice::Iter<EpubLink>> {
@@ -276,6 +318,15 @@ impl EpubHtml {
 
     fn get_links(&mut self) -> Option<&mut Vec<EpubLink>> {
         self.links.as_mut()
+    }
+
+    pub fn set_direction(&mut self, dir: Direction) {
+        self.direction = Some(dir);
+    }
+
+    pub fn with_direction(mut self, dir: Direction) -> Self {
+        self.set_direction(dir);
+        self
     }
 }
 
@@ -518,6 +569,10 @@ pub struct EpubBook {
     reader:Option<std::sync::Arc<std::sync::Mutex< Box<dyn EpubReaderTrait+Send+Sync>>>>,
     /// PREFIX
     pub(crate) prefix: String,
+    /// 方向
+   pub(crate) direction: Option<Direction>,
+   /// 语言
+   language: Option<String>,
 }
 }
 
@@ -556,10 +611,20 @@ impl EpubBook {
     // /
     iepub_derive::option_string_method!(last_modify);
     iepub_derive::option_string_method!(generator);
+    iepub_derive::option_string_method!(language);
 }
 
 // 元数据
 impl EpubBook {
+    pub fn set_direction(&mut self, dir: Direction) {
+        self.direction = Some(dir);
+    }
+
+    pub fn with_direction(mut self, dir: Direction) -> Self {
+        self.set_direction(dir);
+        self
+    }
+
     pub fn set_title<T: AsRef<str>>(&mut self, title: T) {
         self.info.title.clear();
         self.info.title.push_str(title.as_ref());
