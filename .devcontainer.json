@@ -9,8 +9,12 @@
 				"rust-lang.rust-analyzer",
 				"cweijan.epub-reader",
 				"vadimcn.vscode-lldb",
+				"mikeburgh.xml-format",
 				"swellaby.vscode-rust-test-adapter"
 			]
 		}
-	}
+	},
+	"onCreateCommand":
+		"git config user.name $(git --no-pager log --pretty=\"%an\" | head -n 1) && git config user.email $(git --no-pager log --pretty=\"%ce\" | head -n 1)"
+	
 }
