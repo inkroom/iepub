@@ -7,9 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
 
-use crate::common::{IError, IResult};
-
 use super::core::MobiNav;
+use crate::common::{IError, IResult};
 
 static mut ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -98,9 +97,9 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
                         // 新的一卷
 
                         if now.is_some() {
-                            now.as_mut().unwrap().title = match e.unescape() {
+                            now.as_mut().unwrap().title = match e.decode() {
                                 Ok(v) => v.deref().to_string(),
-                                Err(e) => return Err(crate::common::IError::Xml(e)),
+                                Err(e) => return Err(crate::common::IError::Encoding(e)),
                             };
 
                             // 读取这一卷下的目录
@@ -118,9 +117,9 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
                     } else if ppa == "blockquote" {
                         // 一级目录
                         if now.is_some() {
-                            now.as_mut().unwrap().title = match e.unescape() {
+                            now.as_mut().unwrap().title = match e.decode() {
                                 Ok(v) => v.deref().to_string(),
-                                Err(e) => return Err(crate::common::IError::Xml(e)),
+                                Err(e) => return Err(crate::common::IError::Encoding(e)),
                             };
                             nav.push(now.unwrap());
                             now = None;
@@ -324,7 +323,7 @@ fn read_blockquote(reader: &mut Reader<Cursor<Vec<u8>>>, parent: &mut MobiNav) -
             }
             Ok(Event::Text(e)) => {
                 if let Some(n) = &mut now {
-                    n.title = match e.unescape() {
+                    n.title = match e.decode() {
                         Ok(v) => v.deref().to_string(),
                         Err(_) => return Err(IError::InvalidArchive(Cow::from("xml error"))),
                     };
