@@ -1,3 +1,4 @@
+use anyhow::Error;
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -133,35 +134,35 @@ fn read_meta_xml(
                     match parent[parent.len() - 1].as_str() {
                         "meta" => {
                             if let Some(m) = book.get_meta_mut(book.meta_len() - 1) {
-                                m.set_text(txt.unescape()?.deref());
+                                m.set_text(txt.decode().map_err(IError::Encoding)?.deref());
                             }
                         }
                         "dc:identifier" => {
-                            book.set_identifier(txt.unescape()?.deref());
+                            book.set_identifier(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:title" => {
-                            book.set_title(txt.unescape()?.deref());
+                            book.set_title(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:creator" => {
-                            book.set_creator(txt.unescape()?.deref());
+                            book.set_creator(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:description" => {
-                            book.set_description(txt.unescape()?.deref());
+                            book.set_description(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:format" => {
-                            book.set_format(txt.unescape()?.deref());
+                            book.set_format(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:publisher" => {
-                            book.set_publisher(txt.unescape()?.deref());
+                            book.set_publisher(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:subject" => {
-                            book.set_subject(txt.unescape()?.deref());
+                            book.set_subject(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:contributor" => {
-                            book.set_contributor(txt.unescape()?.deref());
+                            book.set_contributor(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         "dc:date" => {
-                            book.set_date(txt.unescape()?.deref());
+                            book.set_date(txt.decode().map_err(IError::Encoding)?.deref());
                         }
                         _ => {}
                     }
@@ -490,7 +491,7 @@ fn read_nav_point_xml(
             }
             Ok(Event::Text(e)) => {
                 if parent[parent.len() - 1] == "text" {
-                    nav.set_title(e.unescape()?.deref());
+                    nav.set_title(e.decode().map_err(IError::Encoding)?.deref());
                 }
             }
             Err(_e) => {
@@ -607,7 +608,7 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                 _ => (),
             },
             Event::Text(e) => {
-                let text = e.unescape()?;
+                let text = e.decode().map_err(IError::Encoding)?;
                 if in_label {
                     buffer.push_str(&text);
                 }

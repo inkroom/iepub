@@ -83,10 +83,9 @@ pub enum IError {
 
     /// The password provided is incorrect
     InvalidPassword,
-
     Utf8(std::string::FromUtf8Error),
-
     Xml(quick_xml::Error),
+    Encoding(quick_xml::encoding::EncodingError),
     NoNav(&'static str),
     Cover(String),
     #[cfg(feature = "cache")]
@@ -188,7 +187,7 @@ pub(crate) fn unescape_html(v: &str) -> String {
         match reader.read_event_into(&mut buf) {
             Ok(quick_xml::events::Event::Text(e)) => {
                 // let _= txt_buf(&e);
-                if let Ok(t) = e.unescape() {
+                if let Ok(t) = e.decode() {
                     txt.push_str(&t.deref());
                 }
             }
