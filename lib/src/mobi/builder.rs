@@ -206,7 +206,7 @@ impl MobiBuilder {
                 nav.push(
                     MobiNav::default(id)
                         .with_chap_id(ele.id)
-                        .with_title(format!("{}. {}",index + 1, ele.title())),
+                        .with_title(format!("{}. {}", index + 1, ele.title())),
                 );
             }
 
@@ -218,7 +218,8 @@ impl MobiBuilder {
 
     fn gen_last_modify(&mut self) {
         if self.book.last_modify().is_none() {
-            self.book.set_last_modify(&crate::common::DateTimeFormater::default().default_format());
+            self.book
+                .set_last_modify(&crate::common::DateTimeFormater::default().default_format());
         }
     }
 
@@ -329,13 +330,10 @@ mod tests {
     #[test]
     #[ignore = "temp"]
     fn test() {
-        let resp = crate::common::tests::get_req(
+        let img = crate::common::tests::get_req_mem(
             "https://www.rust-lang.org/static/images/user-logos/yelp.png",
-        )
-        .send()
-        .unwrap();
-        let img = resp.as_bytes().to_vec();
-        let img2 = crate::common::tests::get_req("https://blog.rust-lang.org/images/2024-05-17-enabling-rust-lld-on-linux/ripgrep-comparison.png").send().unwrap().as_bytes().to_vec();
+        );
+        let img2 = crate::common::tests::get_req_mem("https://blog.rust-lang.org/images/2024-05-17-enabling-rust-lld-on-linux/ripgrep-comparison.png");
 
         let v = MobiBuilder::default()
             .with_title("书名")

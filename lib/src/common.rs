@@ -469,16 +469,21 @@ pub(crate) fn get_media_type(file_name: &str) -> String {
 pub(crate) mod tests {
     use crate::common::DateTimeFormater;
 
-    pub fn get_req(url: &str) -> minreq::Request {
-        let mut req = minreq::get(url);
+    pub fn get_req_mem(url: &str) -> Vec<u8> {
+        get_req(url).send().unwrap().bytes().unwrap().to_vec()
+    }
+
+    pub fn get_req(url: &str) -> reqwest::blocking::RequestBuilder {
+        let mut req = reqwest::blocking::Client::builder();
         if let Ok(proxy) = std::env::var("HTTPS_PROXY")
             .or_else(|_e| std::env::var("https_proxy"))
             .or_else(|_e| std::env::var("ALL_PROXY"))
             .or_else(|_e| std::env::var("all_proxy"))
         {
-            req = req.with_proxy(minreq::Proxy::new(proxy).expect("invalid proxy env"));
+            req = req.proxy(reqwest::Proxy::https(proxy).expect("invalid proxy env"));
+            // req = req.with_proxy(minreq::Proxy::new(proxy).expect("invalid proxy env"));
         }
-        req
+        req.build().unwrap().get(url)
     }
 
     pub fn download_epub_file(name: &str, url: &str) {
@@ -491,19 +496,24 @@ pub(crate) mod tests {
         }
         if std::fs::metadata(name).is_err() {
             // 下载并解压
-            get_req(url)
+            let mut res = get_req(url)
                 .send()
-                .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
-                .map(|v| (v.headers["content-length"].clone(), v.as_bytes().to_vec()))
-                .and_then(|(len, res)| {
-                    if len.parse::<usize>().unwrap() == res.len() {
-                        Ok(res)
+                .map_err(|e: reqwest::Error| IError::InvalidArchive(Cow::from("download fail")))
+                .and_then(|res| {
+                    if !res.status().is_success() {
+                        Err(IError::InvalidArchive(Cow::from("download fail")))
                     } else {
-                        Err(IError::InvalidArchive(Cow::from("download fail,len error")))
+                        Ok(res)
                     }
                 })
-                .and_then(|f| std::fs::write(name, f).map_err(|e| IError::Io(e)))
                 .unwrap();
+            let mut out = std::fs::File::options()
+                .truncate(true)
+                .create(true)
+                .write(true)
+                .open(name)
+                .expect("file fail");
+            std::io::copy(&mut res, &mut out).unwrap();
         }
     }
 
@@ -514,23 +524,11 @@ pub(crate) mod tests {
         if std::fs::metadata(&out).is_err() {
             // 下载并解压
 
-            let mut zip = get_req(url)
-                .send()
+            let zip = get_req_mem(url);
+
+            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip))
                 .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
-                .map(|v| (v.headers["content-length"].clone(), v.as_bytes().to_vec()))
-                .and_then(|(len, res)| {
-                    println!("header len = {len}, res len = {}", res.len());
-                    if len.parse::<usize>().unwrap() == res.len() {
-                        Ok(res)
-                    } else {
-                        Err(IError::InvalidArchive(Cow::from("download fail,len error")))
-                    }
-                })
-                .and_then(|f| {
-                    zip::ZipArchive::new(std::io::Cursor::new(f))
-                        .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
-                })
-                .unwrap();
+                .expect("zip fail");
             let mut zip = zip.by_name(name).unwrap();
             let mut v = Vec::new();
             zip.read_to_end(&mut v).unwrap();

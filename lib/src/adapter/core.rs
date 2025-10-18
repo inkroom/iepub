@@ -654,13 +654,10 @@ mod tests {
 
     #[test]
     fn test_epub_to_mobi() {
-        let resp = crate::common::tests::get_req(
+        let img = crate::common::tests::get_req_mem(
             "https://www.rust-lang.org/static/images/user-logos/yelp.png",
-        )
-        .send()
-        .unwrap();
-        let img = resp.as_bytes().to_vec();
-        let img2 = crate::common::tests::get_req("https://blog.rust-lang.org/images/2024-05-17-enabling-rust-lld-on-linux/ripgrep-comparison.png").send().unwrap().as_bytes().to_vec();
+        );
+        let img2 = crate::common::tests::get_req_mem("https://blog.rust-lang.org/images/2024-05-17-enabling-rust-lld-on-linux/ripgrep-comparison.png");
 
         let mut epub = EpubBuilder::default()
             .with_title("书名")

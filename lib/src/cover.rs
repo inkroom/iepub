@@ -70,17 +70,12 @@ mod text_width {
             } else {
                 "../target/SourceHanSansSC-Bold.otf"
             };
-            let font = std::fs::read(f).or_else( |_|{
-                 crate::common::tests::get_req("https://github.com/adobe-fonts/source-han-serif/raw/refs/heads/release/SubsetOTF/CN/SourceHanSerifCN-Bold.otf").send().map(|v|{
-                    let s =v.as_bytes().to_vec();
-                    println!("{} {:?}",s.len(),v.headers);
-                    if &s.len().to_string() != v.headers.get("content-length").unwrap_or(&String::new()) && v.status_code !=200 {
-                        panic!("字体文件下载失败");
-                    }
-                    let _ = std::fs::write(f, s.clone());
-                    s
-                })
-            }).unwrap();
+            let font = std::fs::read(f).unwrap_or_else( |_|{
+             let s: Vec<u8> = crate::common::tests::get_req_mem("https://github.com/adobe-fonts/source-han-serif/raw/refs/heads/release/SubsetOTF/CN/SourceHanSerifCN-Bold.otf");
+
+                let _ = std::fs::write(f, s.clone());
+                s
+            });
             let font = ab_glyph::FontRef::try_from_slice(&font).unwrap();
 
             let img = ImageCrop::new("的", 70, 120, &font);
@@ -206,17 +201,12 @@ mod tests {
         } else {
             "../target/SourceHanSansSC-Bold.otf"
         };
-        let font = std::fs::read(f).or_else( |_|{
-             crate::common::tests::get_req("https://github.com/adobe-fonts/source-han-serif/raw/refs/heads/release/SubsetOTF/CN/SourceHanSerifCN-Bold.otf").send().map(|v|{
-                let s =v.as_bytes().to_vec();
-                println!("{} {:?}",s.len(),v.headers);
-                if &s.len().to_string() != v.headers.get("content-length").unwrap_or(&String::new()) && v.status_code !=200 {
-                    panic!("字体文件下载失败");
-                }
+        let font = std::fs::read(f).unwrap_or_else( |_|{
+             let s: Vec<u8> = crate::common::tests::get_req_mem("https://github.com/adobe-fonts/source-han-serif/raw/refs/heads/release/SubsetOTF/CN/SourceHanSerifCN-Bold.otf");
+
                 let _ = std::fs::write(f, s.clone());
                 s
-            })
-        }).unwrap();
+        });
 
         let m = super::gen_cover("书名", &font).unwrap();
         std::fs::write(
