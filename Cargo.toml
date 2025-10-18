@@ -5,7 +5,7 @@ rust-version = "1.84.0"
 
 [workspace.package]
 name = "iepub"
-version = "1.2.1"
+version = "1.2.2"
 edition = "2021"
 license = "MIT"
 description = "epub、mobi电子书读写"

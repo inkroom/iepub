@@ -531,7 +531,6 @@ fn read_nav_point_xml(
                 }
             }
             Ok(Event::Text(e)) => {
-                println!("point {}", e.decode().map_err(IError::Encoding)?.deref());
                 if parent.last().map(|f| f == "text").unwrap_or(false) {
                     // quick_xml 0.38.0 之后，对于被转义后的xml文本，会把文本拆成多段
                     title.push_str(e.decode().map_err(IError::Encoding)?.deref());
