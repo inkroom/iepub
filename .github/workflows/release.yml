@@ -34,15 +34,16 @@ jobs:
       image: inkbox/rust:${{ matrix.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         if: ${{ github.event_name == 'push' }}
         with:
          fetch-depth: 0
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout PR
+        uses: actions/checkout@v5
         if: ${{ github.event_name == 'pull_request' }}
         with:
-          ref: ${{github.head_ref}}
+          fetch-depth: 0
+          ref: ${{github.event.pull_request.head.ref }}
       - name: Ready
         run: |
           pwd
@@ -68,7 +69,7 @@ jobs:
       PREV_VERSION: ${{ steps.v.outputs.PREV_VERSION }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Get Version
         id: v
         run: |
@@ -83,7 +84,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
          fetch-depth: 0
       - name: Set up QEMU
@@ -148,7 +149,7 @@ jobs:
         with:
           toolchain: stable
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cargo login
         run: cargo login ${{ secrets.CRATES_TOKEN }}
