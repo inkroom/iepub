@@ -59,8 +59,15 @@ jobs:
             sudo apt-get install libssl-dev
             rustup toolchain install nightly-2024-06-21 && rustup default nightly-2024-06-21 && cargo -Zminimal-versions generate-lockfile && rustup default ${{ matrix.version }}; 
           fi
-          cargo test --workspace --all-features -- --exact --show-output
-          cargo test --workspace -- --exact --show-output
+          # actions也经常下载出现问题，只能重试
+          for i in {1..4}; do
+            cargo test --workspace --all-features -- --exact --show-output && break
+            sleep 5
+          done
+          for i in {1..4}; do
+            cargo test --workspace -- --exact --show-output && break
+            sleep 5
+          done
   check:
     runs-on: ubuntu-24.04
     needs: [version, test]
