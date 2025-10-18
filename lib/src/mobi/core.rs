@@ -441,8 +441,6 @@ mod tests {
 
         let book2 = MobiBook::load_from_cache(f).unwrap();
 
-
-
         assert_eq!(book.chapters.len(), book2.chapters.len());
         assert_eq!(book.chapters[0].data, book2.chapters[0].data);
         assert_eq!(book.images[0]._data, book2.images[0]._data);

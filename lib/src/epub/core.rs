@@ -8,7 +8,7 @@ use super::html::{get_html_info, to_html};
 use crate::cache_struct;
 use crate::common::{escape_xml, IError, IResult};
 use crate::epub::common::LinkRel;
-crate::cache_enum!{
+crate::cache_enum! {
     #[derive(Clone)]
     pub enum Direction {
         RTL,
@@ -16,7 +16,6 @@ crate::cache_enum!{
         CUS(String),
     }
 }
-
 
 impl Display for Direction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

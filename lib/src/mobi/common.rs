@@ -248,7 +248,8 @@ pub(crate) struct INDXRecord {
 /// 格式化时间戳
 pub(crate) fn do_time_format(value: u32) -> String {
     if value & 0x80000000 == 0x80000000 {
-        crate::common::DateTimeFormater::custom_start((value & 0x7fffffff) as u64, 1904).default_format()
+        crate::common::DateTimeFormater::custom_start((value & 0x7fffffff) as u64, 1904)
+            .default_format()
     } else {
         crate::common::DateTimeFormater::new(value as u64).default_format()
     }

@@ -1,5 +1,4 @@
-
-crate::cache_enum!{
+crate::cache_enum! {
     pub enum LinkRel {
         CSS,
         OTHER,
