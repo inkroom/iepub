@@ -61,10 +61,12 @@ jobs:
           fi
           # actions也经常下载出现问题，只能重试
           for i in {1..4}; do
+            echo "第 $i 次测试"
             cargo test --workspace --all-features -- --exact --show-output && break
             sleep 5
           done
           for i in {1..4}; do
+            echo "第 $i 次测试"
             cargo test --workspace -- --exact --show-output && break
             sleep 5
           done
