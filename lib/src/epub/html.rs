@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use super::common;
 use crate::{common::get_media_type, prelude::*};
 use quick_xml::events::Event;
@@ -386,7 +388,7 @@ pub(crate) fn get_html_info(
     let mut title = String::new();
     let mut content = Vec::new();
     let mut reader = Reader::from_str(html);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
     let mut parent: Vec<&str> = Vec::new();
     let mut body_data: Option<Vec<u8>> = None;
@@ -475,8 +477,23 @@ pub(crate) fn get_html_info(
             },
             Ok(Event::Text(e)) => {
                 if parent.len() == 3 && parent[2] == "title" {
-                    let v = String::from_utf8(e.into_inner().to_vec()).map_err(IError::Utf8)?;
-                    title.push_str(v.trim());
+                    title.push_str(e.decode().map_err(IError::Encoding)?.deref());
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                if parent.len() == 3 && parent[2] == "title" {
+                    let t = e.decode().map_err(IError::Encoding)?;
+                    if t == "amp" {
+                        title.push_str("&");
+                    } else if t == "lt" {
+                        title.push_str("<");
+                    } else if t == "gt" {
+                        title.push_str(">");
+                    } else if t == "apos" {
+                        title.push_str("'");
+                    } else if t == "quot" {
+                        title.push_str("\"");
+                    }
                 }
             }
             _ => {}
@@ -493,7 +510,7 @@ pub(crate) fn get_html_info(
             content.append(&mut b);
         }
     }
-    Ok((title, content, lang, direction))
+    Ok((title.trim().to_string(), content, lang, direction))
 }
 
 /// epub3 将所有正文放到一个文件里，不同的section代表不同的章节
@@ -980,5 +997,36 @@ ok
         assert_eq!("en", lang.unwrap());
         // assert_ne!(None, chap.data());
         // assert_ne!(0, chap.data().unwrap().len());
+
+        // 测试 escape
+
+        let (title, data, lang, direction) = get_html_info(
+            r#"<html xml:lang="zh" dir="ltR">
+    <head><title> 测试标题 </title></head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+        assert_eq!(Direction::LTR, direction);
+        assert_eq!("zh", lang.unwrap());
+
+        let (title, data, lang, direction) = get_html_info(
+            r#"<html xml:lang="en" lang="zh" dir="cis">
+    <head><title> Test Title `~!@#$%^&amp;*()_+ and []\{}| and2 ;&apos;:&quot; and3 ,./&lt;&gt;? </title></head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            r#"Test Title `~!@#$%^&*()_+ and []\{}| and2 ;':" and3 ,./<>?"#,
+            title
+        );
     }
 }

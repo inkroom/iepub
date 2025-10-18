@@ -519,6 +519,7 @@ pub(crate) mod tests {
                 .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
                 .map(|v| (v.headers["content-length"].clone(), v.as_bytes().to_vec()))
                 .and_then(|(len, res)| {
+                    println!("header len = {len}, res len = {}", res.len());
                     if len.parse::<usize>().unwrap() == res.len() {
                         Ok(res)
                     } else {

@@ -86,6 +86,11 @@ fn read_meta_xml(
 ) -> IResult<()> {
     use quick_xml::events::Event;
 
+    let mut reading_text = false;
+    let mut text = String::new();
+    let t_s = reader.config().trim_text_start;
+    let t_e = reader.config().trim_text_end;
+    reader.config_mut().trim_text(false);
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
     let mut buf = Vec::new();
@@ -129,48 +134,72 @@ fn read_meta_xml(
                 }
                 _ => {}
             },
+            Ok(Event::GeneralRef(e)) => {
+                if reading_text {
+                    let t = e.decode().map_err(IError::Encoding)?;
+                    if t == "amp" {
+                        text.push_str("&");
+                    } else if t == "lt" {
+                        text.push_str("<");
+                    } else if t == "gt" {
+                        text.push_str(">");
+                    } else if t == "apos" {
+                        text.push_str("'");
+                    } else if t == "quot" {
+                        text.push_str("\"");
+                    }
+                }
+            }
             Ok(Event::Text(txt)) => {
                 if !parent.is_empty() {
                     match parent[parent.len() - 1].as_str() {
-                        "meta" => {
-                            if let Some(m) = book.get_meta_mut(book.meta_len() - 1) {
-                                m.set_text(txt.decode().map_err(IError::Encoding)?.deref());
-                            }
+                        _ => {
+                            reading_text = true;
+                            text.push_str(txt.decode().map_err(IError::Encoding)?.deref());
                         }
-                        "dc:identifier" => {
-                            book.set_identifier(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:title" => {
-                            book.set_title(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:creator" => {
-                            book.set_creator(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:description" => {
-                            book.set_description(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:format" => {
-                            book.set_format(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:publisher" => {
-                            book.set_publisher(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:subject" => {
-                            book.set_subject(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:contributor" => {
-                            book.set_contributor(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        "dc:date" => {
-                            book.set_date(txt.decode().map_err(IError::Encoding)?.deref());
-                        }
-                        _ => {}
                     }
                 }
             }
             Ok(Event::End(e)) => {
                 let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(IError::Utf8)?;
+                reading_text = false;
 
+                match name.as_str() {
+                    "meta" => {
+                        if let Some(m) = book.get_meta_mut(book.meta_len() - 1) {
+                            m.set_text(text.trim());
+                        }
+                    }
+                    "dc:identifier" => {
+                        book.set_identifier(text.trim());
+                    }
+                    "dc:title" => {
+                        book.set_title(text.trim());
+                    }
+                    "dc:creator" => {
+                        book.set_creator(text.trim());
+                    }
+                    "dc:description" => {
+                        book.set_description(text.trim());
+                    }
+                    "dc:format" => {
+                        book.set_format(text.trim());
+                    }
+                    "dc:publisher" => {
+                        book.set_publisher(text.trim());
+                    }
+                    "dc:subject" => {
+                        book.set_subject(text.trim());
+                    }
+                    "dc:contributor" => {
+                        book.set_contributor(text.trim());
+                    }
+                    "dc:date" => {
+                        book.set_date(text.trim());
+                    }
+                    _ => {}
+                }
+                text.clear();
                 if name == "metadata" {
                     if parent.len() != 2 || parent[0] != "package" {
                         return invalid!("not valid opf metadata end");
@@ -187,6 +216,8 @@ fn read_meta_xml(
             _ => {}
         }
     }
+    reader.config_mut().trim_text_start = t_s;
+    reader.config_mut().trim_text_end = t_e;
     Ok(())
 }
 
@@ -448,6 +479,13 @@ fn read_nav_point_xml(
     let mut buf = Vec::new();
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = Vec::new();
+    let mut title = String::new();
+
+    // 因为文本会被拆分，所以不能trim，否则可能导致在中间的空格被trim掉
+    let t_s = reader.config().trim_text_start;
+    let t_e = reader.config().trim_text_end;
+    reader.config_mut().trim_text(false);
+
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => {
@@ -484,14 +522,36 @@ fn read_nav_point_xml(
                 if name == "navPoint" {
                     break;
                 }
-
+                if parent.last().map(|f| f == "text").unwrap_or(false) {
+                    nav.set_title(title.trim());
+                    title.clear();
+                }
                 if !parent.is_empty() && parent[parent.len() - 1] == name {
                     parent.remove(parent.len() - 1);
                 }
             }
             Ok(Event::Text(e)) => {
-                if parent[parent.len() - 1] == "text" {
-                    nav.set_title(e.decode().map_err(IError::Encoding)?.deref());
+                println!("point {}", e.decode().map_err(IError::Encoding)?.deref());
+                if parent.last().map(|f| f == "text").unwrap_or(false){
+                    // quick_xml 0.38.0 之后，对于被转义后的xml文本，会把文本拆成多段
+                    title.push_str(e.decode().map_err(IError::Encoding)?.deref());
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                // 当文本中出现 &amp;之类的转义时，amp会被放到这里
+                if parent.last().map(|f| f == "text").unwrap_or(false) {
+                    let t = e.decode().map_err(IError::Encoding)?;
+                    if t == "amp" {
+                        title.push_str("&");
+                    } else if t == "lt" {
+                        title.push_str("<");
+                    } else if t == "gt" {
+                        title.push_str(">");
+                    } else if t == "apos" {
+                        title.push_str("'");
+                    } else if t == "quot" {
+                        title.push_str("\"");
+                    }
                 }
             }
             Err(_e) => {
@@ -500,6 +560,8 @@ fn read_nav_point_xml(
             _ => {}
         }
     }
+    reader.config_mut().trim_text_start = t_s;
+    reader.config_mut().trim_text_end = t_e;
     Ok(())
 }
 
@@ -820,7 +882,7 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{common::tests::download_epub_file, prelude::*};
+    use crate::{common::tests::download_epub_file, epub::reader::read_meta_xml, prelude::*};
 
     use super::{is_epub, read_nav_xml};
 
@@ -1067,7 +1129,7 @@ html
             .add_chapter(
                 EpubHtml::default()
                     .with_file_name("0.xml")
-                    .with_title("Test Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?")
+                    .with_title("Test Title `~!@#$%^&*()_+ and []\\{}| and2 ;':\" and3 ,./<>?")
                     .with_data("<p>Test Content </p>".as_bytes().to_vec()),
             )
             .add_assets("1.css", "p{color:red}".as_bytes().to_vec())
@@ -1078,7 +1140,7 @@ html
         let mut book = read_from_file(f).unwrap();
         assert_eq!(1, book.nav().len());
         assert_eq!(
-            "1. Test Title `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
+            "1. Test Title `~!@#$%^&*()_+ and []\\{}| and2 ;':\" and3 ,./<>?",
             book.nav().next().unwrap().title()
         );
 
@@ -1089,6 +1151,42 @@ html
         assert_eq!(
             "Test Publisher `~!@#$%^&*()_+ and []\\{}| and ;':\" and ,./<>?",
             book.publisher().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_read_meta_xml() {
+        let xml = r##"<meta property="dcterms:modified">2025-10-18T06:23:37Z</meta>
+        <dc:date id="date">2024-03-14</dc:date>
+        <meta name="generator" content="iepub-1.2.0"/>
+        <dc:identifier id="id">isbn</dc:identifier>
+        <dc:title>Test Story `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</dc:title>
+        <dc:creator id="creator">Test Creator `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</dc:creator>
+        <dc:description>Test Description `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</dc:description>
+        <meta property="desc">Test Description `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</meta>
+        <dc:publisher id="publisher">Test Publisher `~!@#$%^&amp;*()_+ and []\{}| and ;&apos;:&quot; and ,./&lt;&gt;?</dc:publisher>
+        <meta s="d"/>
+        <meta h="m"/>"##;
+
+        let mut book = EpubBook::default();
+        let mut reader = quick_xml::Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        read_meta_xml(&mut reader, &mut book).unwrap();
+        assert_eq!(
+            book.title(),
+            r#"Test Story `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"#
+        );
+        assert_eq!(
+            book.creator().unwrap(),
+            r#"Test Creator `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"#
+        );
+        assert_eq!(
+            book.description().unwrap(),
+            r#"Test Description `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"#
+        );
+        assert_eq!(
+            book.publisher().unwrap(),
+            r#"Test Publisher `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"#
         );
     }
 }
