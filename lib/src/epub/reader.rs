@@ -24,7 +24,7 @@ macro_rules! invalid {
 macro_rules! read_from_zip {
     ($m:ident,$x:expr) => {{
         // 读取 container.xml
-        let mut file = invalid!($m.by_name($x), stringify!($x not exist));
+        let mut file = invalid!($m.by_name($x), format!("{} not exist", $x));
         let mut content = String::new();
         invalid!(file.read_to_string(&mut content), "read err");
         content
