@@ -1,10 +1,9 @@
 [workspace]
 members = [ "derive", "lib"] 
 resolver = "2"
-rust-version = "1.84.0"
 
 [workspace.package]
-name = "iepub"
+rust-version = "1.84.0"
 version = "1.2.2"
 edition = "2021"
 license = "MIT"

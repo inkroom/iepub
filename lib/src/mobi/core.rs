@@ -1,15 +1,15 @@
 cache_struct! {
-/// 章节信息，html片段
-#[derive(Debug)]
-pub struct MobiHtml {
-    title: String,
-    /// 唯一id，写入时需要 确保nav能正确指向章节，否则目录会错误
-    pub(crate) id: usize,
-    /// 可阅读的文本
-    data: Vec<u8>,
+    /// 章节信息，html片段
+    #[derive(Debug)]
+    pub struct MobiHtml {
+        title: String,
+        /// 唯一id，写入时需要 确保nav能正确指向章节，否则目录会错误
+        pub(crate) id: usize,
+        /// 可阅读的文本
+        data: Vec<u8>,
 
-    pub(crate) nav_id: usize,
-}
+        pub(crate) nav_id: usize,
+    }
 }
 impl MobiHtml {
     pub fn new(id: usize) -> Self {
@@ -297,6 +297,7 @@ impl MobiBook {
 }
 
 use std::{
+    fmt::Debug,
     io::{Read, Seek},
     sync::atomic::AtomicUsize,
 };
@@ -401,11 +402,7 @@ mod tests {
         println!("======");
 
         assert_eq!(24, book.chapters.len());
-        println!("{:?}", book.chapters[0]);
 
-        println!("======");
-
-        println!("{:?}", book.chapters[20]);
         println!("======");
 
         assert_eq!(1, book.images.len());

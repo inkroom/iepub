@@ -10,8 +10,6 @@ use quick_xml::reader::Reader;
 use super::core::MobiNav;
 use crate::common::{IError, IResult};
 
-static mut ID: AtomicUsize = AtomicUsize::new(0);
-
 trait VecExt<T> {
     /// 从后开始计算，例如0获取最后一个元素，1获取倒数第二个元素
     fn rget(&mut self, r_index: usize) -> Option<&mut T>;
@@ -28,7 +26,7 @@ impl<T> VecExt<T> for Vec<T> {
     }
 }
 /// 读取目录导航，要求参数只包括目录部分
-pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
+pub(crate) fn read_nav_xml(xml: Vec<u8>, id: &mut AtomicUsize) -> IResult<Vec<MobiNav>> {
     let mut reader = Reader::from_reader(std::io::Cursor::new(xml));
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
@@ -46,14 +44,14 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
                     // 这里的上一级应该只有 p, 上一级是 blockquote 的情况 在text的时候交给其他方法处理了
                     let pa = &parent[parent.len() - 1];
                     if pa == "p" {
-                        let mut n = MobiNav::default(unsafe { ID.fetch_add(1, Ordering::SeqCst) });
+                        let mut n = MobiNav::default({ id.fetch_add(1, Ordering::SeqCst) });
                         if let Some(pos) = e.get_file_pos() {
                             n.href = pos;
                         }
                         now = Some(n);
                     } else if pa == "blockquote" {
                         // 直接读到这里，说明没有二级目录，直接就是一级目录，所以需要
-                        let mut n = MobiNav::default(unsafe { ID.fetch_add(1, Ordering::SeqCst) });
+                        let mut n = MobiNav::default({ id.fetch_add(1, Ordering::SeqCst) });
                         if let Some(pos) = e.get_file_pos() {
                             n.href = pos;
                         }
@@ -72,7 +70,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
                     let pa = &parent[parent.len() - 1];
                     if pa == "p" {
                         // 读取这一卷下的目录
-                        let has_more = read_blockquote(&mut reader, now.as_mut().unwrap())?;
+                        let has_more = read_blockquote(&mut reader, now.as_mut().unwrap(), id)?;
                         nav.push(now.clone().unwrap());
                         now = None;
 
@@ -103,7 +101,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
                             };
 
                             // 读取这一卷下的目录
-                            let has_more = read_blockquote(&mut reader, now.as_mut().unwrap())?;
+                            let has_more = read_blockquote(&mut reader, now.as_mut().unwrap(), id)?;
                             nav.push(now.clone().unwrap());
                             now = None;
 
@@ -125,7 +123,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>) -> IResult<Vec<MobiNav>> {
                             now = None;
 
                             let mut temp = MobiNav::default(0);
-                            let has_more = read_blockquote(&mut reader, &mut temp)?;
+                            let has_more = read_blockquote(&mut reader, &mut temp, id)?;
                             for ele in temp.children {
                                 nav.push(ele);
                             }
@@ -298,7 +296,11 @@ pub(crate) fn generate_reader_nav_xml(
     text
 }
 
-fn read_blockquote(reader: &mut Reader<Cursor<Vec<u8>>>, parent: &mut MobiNav) -> IResult<bool> {
+fn read_blockquote(
+    reader: &mut Reader<Cursor<Vec<u8>>>,
+    parent: &mut MobiNav,
+    id: &mut AtomicUsize,
+) -> IResult<bool> {
     let mut buf = Vec::new();
 
     let mut now: Option<MobiNav> = None;
@@ -308,9 +310,7 @@ fn read_blockquote(reader: &mut Reader<Cursor<Vec<u8>>>, parent: &mut MobiNav) -
                 let name = String::from_utf8(e.name().as_ref().to_vec())?;
 
                 if name == "a" {
-                    now = Some(MobiNav::default(unsafe {
-                        ID.fetch_add(1, Ordering::SeqCst)
-                    }));
+                    now = Some(MobiNav::default({ id.fetch_add(1, Ordering::SeqCst) }));
 
                     // quick_xml 不支持 unquoted 的属性值解析，所以只能想办法自己来了
                     if let Some(pos) = e.get_file_pos() {
@@ -477,7 +477,10 @@ impl<'a> FilePosAttr for BytesStart<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{
+        collections::HashMap,
+        sync::atomic::{AtomicBool, AtomicUsize},
+    };
 
     use quick_xml::events::BytesStart;
 
@@ -701,8 +704,9 @@ mod tests {
             .to_string()
             .as_bytes()
             .to_vec();
+        let mut id = AtomicUsize::new(0);
 
-        let mut nav = read_nav_xml(xml).unwrap();
+        let mut nav = read_nav_xml(xml, &mut id).unwrap();
 
         println!("{:?}", nav);
 
@@ -725,9 +729,11 @@ mod tests {
 
     #[test]
     fn test_no_level_xml() {
+        let mut id = AtomicUsize::new(0);
+
         let xml = r#"<p height="1em" width="0pt" align="center"><font size="7"><b>Table of Contents</b></font></p><blockquote height="0pt" width="0pt"><a filepos=0000000297>标题</a></blockquote>"#;
 
-        let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
+        let n = read_nav_xml(xml.as_bytes().to_vec(), &mut id).unwrap();
 
         assert_eq!(1, n.len());
         assert_eq!("标题", n[0].title);
@@ -735,7 +741,7 @@ mod tests {
 
         let xml = r#"<p height="1em" width="0pt" align="center"><font size="7"><b>Table of Contents</b></font></p><blockquote height="0pt" width="0pt"><a filepos=0000000297>标题</a></blockquote><blockquote height="0pt" width="0pt"><a filepos=0000000298>标题2</a></blockquote>"#;
 
-        let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
+        let n = read_nav_xml(xml.as_bytes().to_vec(), &mut id).unwrap();
 
         assert_eq!(2, n.len());
         assert_eq!("标题", n[0].title);
@@ -747,6 +753,7 @@ mod tests {
 
     #[test]
     fn test_empty_xml() {
+        let mut id = AtomicUsize::new(0);
         // let xml = "<p height=\"1em\" width=\"0pt\" align=\"center\"><font size=\"7\"><b>Table of Contents</b></font></p><blockquote height=\"0pt\" width=\"0pt\"><a filepos=0000000303>&#x20;</a></blockquote>";
 
         // let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
@@ -756,7 +763,7 @@ mod tests {
 
         let xml = "<p height=\"1em\" width=\"0pt\" align=\"center\"><font size=\"7\"><b>Table of Contents</b></font></p><blockquote height=\"0pt\" width=\"0pt\"><a filepos=0000000303></a></blockquote>";
 
-        let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
+        let n = read_nav_xml(xml.as_bytes().to_vec(), &mut id).unwrap();
 
         assert_eq!(1, n.len());
         assert_eq!("", n[0].title());
@@ -772,7 +779,7 @@ mod tests {
         <blockquote height="0pt" width="0pt">
             <a filepos=0000005452></a>
         </blockquote>"#;
-        let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
+        let n = read_nav_xml(xml.as_bytes().to_vec(), &mut id).unwrap();
 
         assert_eq!(1, n.len());
         assert_eq!("第一卷 天狼星天文台杀人事件", n[0].title());
@@ -791,7 +798,7 @@ mod tests {
     <blockquote height="0pt" width="0pt">
         <a filepos=0000005452></a>
     </blockquote>"#;
-        let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
+        let n = read_nav_xml(xml.as_bytes().to_vec(), &mut id).unwrap();
 
         assert_eq!(1, n.len());
         assert_eq!("", n[0].title());
@@ -811,8 +818,8 @@ mod tests {
         <blockquote height="0pt" width="0pt">
             <a filepos=0000007756>第一章 天狼星天文台杀人事件1</a>
         </blockquote>"#;
-
-        let n = read_nav_xml(xml.as_bytes().to_vec()).unwrap();
+        let mut id = AtomicUsize::new(1);
+        let n = read_nav_xml(xml.as_bytes().to_vec(), &mut id).unwrap();
 
         assert_eq!(3, n.len());
         assert_eq!("标题", n[0].title);

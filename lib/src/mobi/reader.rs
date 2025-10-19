@@ -8,6 +8,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     io::{BufReader, Read, Seek, SeekFrom},
+    sync::atomic::AtomicUsize,
 };
 
 use crate::{
@@ -492,6 +493,8 @@ pub struct MobiReader<T> {
     pub(crate) exth_header: Option<EXTHHeader>,
     /// 原始文本缓存
     text_cache: Option<Vec<u8>>,
+    /// 自增id
+    id: AtomicUsize,
 }
 
 impl<T: Read + Seek> MobiReader<T> {
@@ -521,6 +524,7 @@ impl<T: Read + Seek> MobiReader<T> {
             mobi_header,
             exth_header,
             text_cache: None,
+            id: AtomicUsize::new(1),
         })
     }
 
@@ -570,7 +574,7 @@ impl<T: Read + Seek> MobiReader<T> {
         let file_pos = read_guide_filepos(&raw[..])?;
 
         if let Some(toc) = file_pos.map_or(None, |v| sec.iter().find(|s| s.end > v)) {
-            return read_nav_xml(toc.data.as_bytes().to_vec()).map(|s| Some(s));
+            return read_nav_xml(toc.data.as_bytes().to_vec(), &mut self.id).map(|s| Some(s));
         }
 
         Ok(None)
