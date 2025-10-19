@@ -362,26 +362,20 @@ pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String>
 
 /// 生成OPF
 pub(crate) fn to_opf(book: &mut EpubBook, generator: &str) -> String {
-    match do_to_opf(book, generator) {
-        Ok(s) => s,
-        Err(_) => String::new(),
-    }
+    do_to_opf(book, generator).unwrap_or_default()
+}
+
+pub(crate) struct HtmlInfo {
+    pub(crate) title: String,
+    pub(crate) content: Vec<u8>,
+    pub(crate) language: Option<String>,
+    pub(crate) direction: Option<Direction>,
 }
 
 ///
 /// 解析html获取相关数据
 ///
-/// # Returns
-///
-/// 第一个是title
-/// 第二个是正文
-/// 第三个是language
-/// 第四个是direction
-///
-pub(crate) fn get_html_info(
-    html: &str,
-    id: Option<&str>,
-) -> IResult<(String, Vec<u8>, Option<String>, Option<Direction>)> {
+pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
     use quick_xml::reader::Reader;
     let mut lang = None;
     let mut direction = None;
@@ -484,15 +478,15 @@ pub(crate) fn get_html_info(
                 if parent.len() == 3 && parent[2] == "title" {
                     let t = e.decode().map_err(IError::Encoding)?;
                     if t == "amp" {
-                        title.push_str("&");
+                        title.push('&');
                     } else if t == "lt" {
-                        title.push_str("<");
+                        title.push('<');
                     } else if t == "gt" {
-                        title.push_str(">");
+                        title.push('>');
                     } else if t == "apos" {
-                        title.push_str("'");
+                        title.push('\'');
                     } else if t == "quot" {
-                        title.push_str("\"");
+                        title.push('"');
                     }
                 }
             }
@@ -510,7 +504,12 @@ pub(crate) fn get_html_info(
             content.append(&mut b);
         }
     }
-    Ok((title.trim().to_string(), content, lang, direction))
+    Ok(HtmlInfo {
+        title: title.trim().to_string(),
+        content,
+        language: lang,
+        direction,
+    })
 }
 
 /// epub3 将所有正文放到一个文件里，不同的section代表不同的章节
@@ -529,13 +528,13 @@ fn get_section_from_html(body: &str, id: &str) -> IResult<Vec<u8>> {
             Err(e) => {
                 return Err(IError::Xml(e));
             }
-            Ok(Event::Start(body)) => match body.name().as_ref() {
-                b"section" => {
-                    if body
+            Ok(Event::Start(body)) => {
+                if body.name().as_ref() == b"section"
+                    && body
                         .try_get_attribute("id")
                         .map_err(|_e| IError::Unknown)
                         .and_then(|f| f.ok_or(IError::Unknown))
-                        .and_then(|f| f.unescape_value().map_err(|e| IError::Xml(e)))
+                        .and_then(|f| f.unescape_value().map_err(IError::Xml))
                         .map(|f| f.to_string())
                         .map(|f| f == id)
                         .unwrap_or(false)
@@ -551,13 +550,11 @@ fn get_section_from_html(body: &str, id: &str) -> IResult<Vec<u8>> {
                             break;
                         }
                     }
-                }
-                _ => {}
-            },
+            }
             _ => {}
         }
     }
-    return Ok(content);
+    Ok(content)
 }
 
 #[cfg(test)]
@@ -922,7 +919,7 @@ ok
 
     #[test]
     fn test_get_html_info() {
-        let (title, data, lang, direction) = get_html_info(
+        let info = get_html_info(
             r"<html>
     <head><title> 测试标题 </title></head>
     <body>
@@ -933,15 +930,15 @@ ok
         )
         .unwrap();
 
-        assert_eq!(None, direction);
-        assert_eq!(None, lang);
-        assert_eq!(r"测试标题", title);
+        assert_eq!(None, info.direction);
+        assert_eq!(None, info.language);
+        assert_eq!(r"测试标题", info.title);
 
         assert_eq!(
             r"
     <p>段落1</p>ok
     ",
-            String::from_utf8(data).unwrap()
+            String::from_utf8(info.content).unwrap()
         );
 
         // 测试 epub3 格式
@@ -949,14 +946,13 @@ ok
 
         let html = std::fs::read_to_string(download_zip_file(name, "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub")).unwrap();
 
-        let (title, data, lang, direction) =
-            get_html_info(html.as_str(), Some("pgepubid00495")).unwrap();
+        let info = get_html_info(html.as_str(), Some("pgepubid00495")).unwrap();
 
-        assert_eq!(3324, data.len());
+        assert_eq!(3324, info.content.len());
 
         // 测试lang
 
-        let (title, data, lang, direction) = get_html_info(
+        let info = get_html_info(
             r#"<html lang="zh" dir="rtl">
     <head><title> 测试标题 </title></head>
     <body>
@@ -967,10 +963,10 @@ ok
         )
         .unwrap();
 
-        assert_eq!("zh", lang.unwrap());
-        assert_eq!(Direction::RTL, direction);
+        assert_eq!("zh", info.language.unwrap());
+        assert_eq!(Direction::RTL, info.direction);
 
-        let (title, data, lang, direction) = get_html_info(
+        let info = get_html_info(
             r#"<html xml:lang="zh" dir="ltR">
     <head><title> 测试标题 </title></head>
     <body>
@@ -980,10 +976,10 @@ ok
             None,
         )
         .unwrap();
-        assert_eq!(Direction::LTR, direction);
-        assert_eq!("zh", lang.unwrap());
+        assert_eq!(Direction::LTR, info.direction);
+        assert_eq!("zh", info.language.unwrap());
 
-        let (title, data, lang, direction) = get_html_info(
+        let info = get_html_info(
             r#"<html xml:lang="en" lang="zh" dir="cis">
     <head><title> 测试标题 </title></head>
     <body>
@@ -993,14 +989,14 @@ ok
             None,
         )
         .unwrap();
-        assert_eq!(Direction::CUS("cis".to_string()), direction);
-        assert_eq!("en", lang.unwrap());
+        assert_eq!(Direction::CUS("cis".to_string()), info.direction);
+        assert_eq!("en", info.language.unwrap());
         // assert_ne!(None, chap.data());
         // assert_ne!(0, chap.data().unwrap().len());
 
         // 测试 escape
 
-        let (title, data, lang, direction) = get_html_info(
+        let info = get_html_info(
             r#"<html xml:lang="zh" dir="ltR">
     <head><title> 测试标题 </title></head>
     <body>
@@ -1010,10 +1006,10 @@ ok
             None,
         )
         .unwrap();
-        assert_eq!(Direction::LTR, direction);
-        assert_eq!("zh", lang.unwrap());
+        assert_eq!(Direction::LTR, info.direction);
+        assert_eq!("zh", info.language.unwrap());
 
-        let (title, data, lang, direction) = get_html_info(
+        let info= get_html_info(
             r#"<html xml:lang="en" lang="zh" dir="cis">
     <head><title> Test Title `~!@#$%^&amp;*()_+ and []\{}| and2 ;&apos;:&quot; and3 ,./&lt;&gt;? </title></head>
     <body>
@@ -1026,7 +1022,7 @@ ok
 
         assert_eq!(
             r#"Test Title `~!@#$%^&*()_+ and []\{}| and2 ;':" and3 ,./<>?"#,
-            title
+            info.title
         );
     }
 }

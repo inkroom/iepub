@@ -8,6 +8,7 @@ use super::html::{get_html_info, to_html};
 use crate::cache_struct;
 use crate::common::{escape_xml, IError, IResult};
 use crate::epub::common::LinkRel;
+use crate::epub::html;
 crate::cache_enum! {
     #[derive(Clone)]
     pub enum Direction {
@@ -177,7 +178,7 @@ impl EpubHtml {
     }
 
     pub fn data(&self) -> Option<&[u8]> {
-        self._data.as_ref().map(|f| f.as_slice())
+        self._data.as_deref()
     }
     ///
     /// 获取数据
@@ -185,7 +186,7 @@ impl EpubHtml {
     /// 支持延迟读取
     ///
     pub fn data_mut(&mut self) -> Option<&[u8]> {
-        let (id, origin) = if let Some(index) = self._file_name.find(|f| f == '#') {
+        let (id, origin) = if let Some(index) = self._file_name.find('#') {
             (
                 Some(&self._file_name[(index + 1)..]),
                 self._file_name[0..index].to_string(),
@@ -194,7 +195,7 @@ impl EpubHtml {
             (None, self.file_name().to_string())
         };
         let mut f = String::from(self._file_name.as_str());
-        let prefixs = vec!["", common::EPUB, common::EPUB3];
+        let prefixs = ["", common::EPUB, common::EPUB3];
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
             for prefix in prefixs.iter() {
                 // 添加 前缀再次读取
@@ -203,12 +204,18 @@ impl EpubHtml {
                 let d = s.lock().unwrap().read_string(f.as_str());
                 match d {
                     Ok(v) => {
-                        if let Ok((title, data, lang, direction)) = get_html_info(v.as_str(), id) {
+                        if let Ok(html::HtmlInfo {
+                            title,
+                            content,
+                            language,
+                            direction,
+                        }) = get_html_info(v.as_str(), id)
+                        {
                             if !title.is_empty() {
                                 self.set_title(&title);
                             }
-                            self.set_data(data);
-                            if let Some(lang) = lang {
+                            self.set_data(content);
+                            if let Some(lang) = language {
                                 self.set_language(lang);
                             }
                             self.direction = direction;
@@ -216,7 +223,7 @@ impl EpubHtml {
                         break;
                     }
                     Err(IError::FileNotFound) => {}
-                    Err(e) => {
+                    Err(_e) => {
                         break;
                     }
                 }
@@ -238,7 +245,7 @@ impl EpubHtml {
     }
 
     pub fn raw_data(&mut self) -> Option<&str> {
-        let (id, origin) = if let Some(index) = self._file_name.find(|f| f == '#') {
+        let (id, origin) = if let Some(index) = self._file_name.find('#') {
             (
                 Some(&self._file_name[(index + 1)..]),
                 self._file_name[0..index].to_string(),
@@ -247,7 +254,7 @@ impl EpubHtml {
             (None, self.file_name().to_string())
         };
         let mut f = String::from(self._file_name.as_str());
-        let prefixs = vec!["", common::EPUB, common::EPUB3];
+        let prefixs = ["", common::EPUB, common::EPUB3];
         if self.raw_data.is_none() && self.reader.is_some() && !f.is_empty() {
             for prefix in prefixs.iter() {
                 // 添加 前缀再次读取
@@ -353,7 +360,7 @@ impl EpubAssets {
     pub fn data_mut(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            let prefixs = vec!["", common::EPUB, common::EPUB3];
+            let prefixs = ["", common::EPUB, common::EPUB3];
             if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
                 for prefix in prefixs.iter() {
                     let s = self.reader.as_mut().unwrap();
@@ -372,7 +379,7 @@ impl EpubAssets {
 
     pub fn write_to<W: Write>(&mut self, writer: &mut W) -> IResult<()> {
         if let Some(data) = self.data_mut() {
-            writer.write_all(&data)?;
+            writer.write_all(data)?;
             writer.flush()?;
         }
         Ok(())
@@ -381,7 +388,7 @@ impl EpubAssets {
     pub fn save_to<T: AsRef<str>>(&mut self, file_path: T) -> IResult<()> {
         let mut f: String = self._file_name.clone();
         if self.reader.is_some() && !f.is_empty() {
-            let prefixs = vec!["", common::EPUB, common::EPUB3];
+            let prefixs = ["", common::EPUB, common::EPUB3];
             for prefix in prefixs.iter() {
                 let s = self.reader.as_mut().unwrap();
                 f = format!("{prefix}{}", self._file_name);
@@ -749,9 +756,9 @@ impl EpubBook {
     /// [file_name] 不需要带有 EPUB 目录
     ///
     pub fn get_chapter<T: AsRef<str>>(&self, file_name: T) -> Option<&EpubHtml> {
-        self.chapters.iter().find(|s| {
-            return s.file_name() == file_name.as_ref();
-        })
+        self.chapters
+            .iter()
+            .find(|s| s.file_name() == file_name.as_ref())
     }
 
     ///
@@ -760,9 +767,9 @@ impl EpubBook {
     /// [file_name] 不需要带有 EPUB 目录
     ///
     pub fn get_chapter_mut<T: AsRef<str>>(&mut self, file_name: T) -> Option<&mut EpubHtml> {
-        self.chapters.iter_mut().find(|s| {
-            return s.file_name() == file_name.as_ref();
-        })
+        self.chapters
+            .iter_mut()
+            .find(|s| s.file_name() == file_name.as_ref())
     }
 
     pub fn set_version<T: AsRef<str>>(&mut self, version: T) {
@@ -824,7 +831,7 @@ impl EpubBook {
                     chap.reader = Some(Arc::clone(r));
                 }
                 self.chapters.insert(index + offset, chap);
-                offset = offset + 1;
+                offset += 1;
             }
         }
     }

@@ -160,7 +160,7 @@ cache_struct! {
 impl BookInfo {
     pub(crate) fn append_creator(&mut self, v: &str) {
         if let Some(c) = &mut self.creator {
-            c.push_str(",");
+            c.push(',');
             c.push_str(v);
         } else {
             self.creator = Some(String::from(v));
@@ -188,7 +188,7 @@ pub(crate) fn unescape_html(v: &str) -> String {
             Ok(quick_xml::events::Event::Text(e)) => {
                 // let _= txt_buf(&e);
                 if let Ok(t) = e.decode() {
-                    txt.push_str(&t.deref());
+                    txt.push_str(t.deref());
                 }
             }
             Ok(quick_xml::events::Event::Eof) => {
@@ -235,6 +235,17 @@ pub struct DateTimeFormater {
     timezone_offset: i16,
 }
 
+impl Default for DateTimeFormater{
+    fn default() -> Self {
+        Self::new(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|v| v.as_secs())
+                .unwrap_or(0),
+        )
+    }
+}
+
 impl DateTimeFormater {
     pub fn custom_start(timestamp: u64, start_year: u64) -> Self {
         // 需要强制指定类型，否则自动推测会出错
@@ -262,15 +273,6 @@ impl DateTimeFormater {
     ///
     pub fn new(timestamp: u64) -> Self {
         Self::custom_start(timestamp, 1970)
-    }
-
-    pub fn default() -> Self {
-        Self::new(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|v| v.as_secs())
-                .unwrap_or(0),
-        )
     }
 
     pub fn with_timezone_offset(mut self, offset: i16) -> Self {
@@ -345,7 +347,7 @@ impl DateTimeFormater {
         let offset = self.timezone_offset * 60 * 60;
 
         let value = if offset < 0 {
-            value - ((offset * -1) as u64)
+            value - (-offset as u64)
         } else {
             value + (offset as u64)
         };
@@ -408,7 +410,7 @@ impl DateTimeFormater {
     // 判断是否是闰年
     //
     fn is_leap(year: u64) -> bool {
-        return year % 4 == 0 && ((year % 100) != 0 || year % 400 == 0);
+        year % 4 == 0 && ((year % 100) != 0 || year % 400 == 0)
     }
 }
 

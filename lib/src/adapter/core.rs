@@ -197,7 +197,7 @@ fn convert_epub_html_img(html: &[u8], path: &str) -> Vec<u8> {
     let current = crate::path::Path::system(path).pop();
 
     generate_text_img_xml(html, |v| {
-        let path = String::from_utf8(v).unwrap_or(String::new());
+        let path = String::from_utf8(v).unwrap_or_default();
         // 修正路径
         let t = current.join(path.as_str());
         format!("src='{}'", t.to_str()).as_bytes().to_vec()
@@ -379,7 +379,7 @@ pub mod concat {
 
         for ele in nav.child() {
             let (nav, l) = clone_epub_nav(ele, new_file_name, len);
-            len = len + l;
+            len += l;
             new_nav.push(nav);
         }
         (new_nav, len)
@@ -406,7 +406,7 @@ pub mod concat {
                         .join(f.as_str())
                         .to_str()
                 })
-                .and_then(|f| asset_map.get(f.as_str()).clone())
+                .and_then(|f| asset_map.get(f.as_str()))
                 .map(|f| {
                     format!(
                         r#"src="{}""#,
@@ -417,7 +417,7 @@ pub mod concat {
                     .as_bytes()
                     .to_vec()
                 })
-                .unwrap_or(Vec::new())
+                .unwrap_or_default()
         })
     }
 
@@ -443,7 +443,7 @@ pub mod concat {
             let f = ele.data_mut().unwrap().to_vec();
             asset_len += 1;
 
-            let sufix = ele.file_name().find(|f| f == '.').unwrap_or(0);
+            let sufix = ele.file_name().find('.').unwrap_or(0);
             let sufix = &ele.file_name()[(sufix + 1)..];
             let nn = format!("image/{}.{}", asset_len, sufix);
             builder = builder.add_assets(nn.as_str(), f);

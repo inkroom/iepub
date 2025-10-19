@@ -166,7 +166,7 @@ pub(crate) fn gen_cover(book_name: &str, font: &[u8]) -> IResult<Vec<u8>> {
 }
 
 #[cfg(not(feature = "cover"))]
-pub(crate) fn gen_cover(book_name: &str, font: &[u8]) -> IResult<Vec<u8>> {
+pub(crate) fn gen_cover(_book_name: &str, _font: &[u8]) -> IResult<Vec<u8>> {
     panic!("自动封面需要启用 cover features")
 }
 

@@ -11,8 +11,8 @@ fn is_overiade(global_opts: &[arg::ArgOption], opts: &[arg::ArgOption]) -> bool 
     global_opts
         .iter()
         .find(|s| s.key == "y")
-        .map_or(false, |_| true)
-        || opts.iter().find(|s| s.key == "y").map_or(false, |_| true)
+        .is_some_and(|_| true)
+        || opts.iter().find(|s| s.key == "y").is_some_and(|_| true)
 }
 
 ///
@@ -91,7 +91,7 @@ fn read_book(file: &str) -> IResult<OwnBook> {
         .and_then(|mut f| iepub::prelude::check::is_epub(&mut f).map_err(|_| false))
         .unwrap_or(false)
     {
-        read_from_file(file).map(|f| OwnBook::EPUB(f))
+        read_from_file(file).map(OwnBook::EPUB)
     } else if std::fs::File::open(file)
         .map_err(|_| false)
         .and_then(|mut f| iepub::prelude::check::is_mobi(&mut f).map_err(|_| false))
@@ -100,7 +100,7 @@ fn read_book(file: &str) -> IResult<OwnBook> {
         let f = std::fs::File::open(file)?;
         iepub::prelude::MobiReader::new(f)
             .and_then(|mut f| f.load())
-            .map(|f| OwnBook::MOBI(f))
+            .map(OwnBook::MOBI)
     } else {
         Err(IError::UnsupportedArchive("不支持的格式"))
     }
@@ -115,12 +115,12 @@ pub(crate) mod epub {
     use iepub::prelude::adapter::add_into_epub;
     use iepub::prelude::adapter::epub_to_mobi;
     use iepub::prelude::appender::write_metadata;
-    use iepub::prelude::read_from_file;
-    use iepub::prelude::EpubBook;
+    
+    
     use iepub::prelude::EpubBuilder;
     use iepub::prelude::EpubNav;
-    use iepub::prelude::IResult;
-    use iepub::prelude::MobiBook;
+    
+    
     use iepub::prelude::MobiWriter;
 
     use crate::{
@@ -438,7 +438,7 @@ pub(crate) mod epub {
             _args: &[String],
         ) {
             if let Book::EPUB(book) = book {
-                let print_href = opts.iter().find(|s| s.key == "s").map_or(false, |_| true);
+                let print_href = opts.iter().find(|s| s.key == "s").is_some_and(|_| true);
                 for ele in book.nav() {
                     self.print_nav(0, ele, print_href);
                 }
@@ -756,7 +756,7 @@ pub(crate) mod epub {
                 .and_then(|f| f.value.clone())
                 .unwrap();
 
-            let append_title = opts.iter().find(|f| f.key == "n").is_none();
+            let append_title = !opts.iter().any(|f| f.key == "n");
 
             if let Book::EPUB(book) = book {
                 let _ = epub_to_mobi(book)
@@ -1123,7 +1123,7 @@ pub(crate) mod mobi {
                 .find(|f| f.key == "f")
                 .and_then(|f| f.value.clone())
                 .unwrap();
-            let append_title = opts.iter().find(|f| f.key == "n").is_none();
+            let append_title = !opts.iter().any(|f| f.key == "n");
 
             if let Book::MOBI(book) = book {
                 let _ = mobi_to_epub(book)

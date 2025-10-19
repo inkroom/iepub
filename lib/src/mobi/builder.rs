@@ -219,7 +219,7 @@ impl MobiBuilder {
     fn gen_last_modify(&mut self) {
         if self.book.last_modify().is_none() {
             self.book
-                .set_last_modify(&crate::common::DateTimeFormater::default().default_format());
+                .set_last_modify(crate::common::DateTimeFormater::default().default_format());
         }
     }
 
@@ -231,7 +231,7 @@ impl MobiBuilder {
                     .font
                     .as_ref()
                     .and_then(|f| std::fs::read(f.as_str()).ok())
-                    .unwrap_or_else(|| Vec::new()),
+                    .unwrap_or_default(),
             };
             if font_bytes.is_empty() {
                 return Err(IError::Cover("no font set".to_string()));

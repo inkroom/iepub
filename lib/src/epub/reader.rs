@@ -1,4 +1,3 @@
-use anyhow::Error;
 use quick_xml::events::BytesStart;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -69,13 +68,11 @@ fn get_opf_location(xml: &str) -> IResult<String> {
 fn create_meta(xml: &BytesStart) -> IResult<EpubMetaData> {
     let mut meta = EpubMetaData::default();
 
-    for ele in xml.attributes() {
-        if let Ok(a) = ele {
-            meta.push_attr(
-                String::from_utf8(a.key.0.to_vec()).unwrap().as_str(),
-                String::from_utf8(a.value.to_vec()).unwrap().as_str(),
-            );
-        }
+    for a in xml.attributes().flatten() {
+        meta.push_attr(
+            String::from_utf8(a.key.0.to_vec()).unwrap().as_str(),
+            String::from_utf8(a.value.to_vec()).unwrap().as_str(),
+        );
     }
     Ok(meta)
 }
@@ -121,32 +118,29 @@ fn read_meta_xml(
                     parent.push(name);
                 }
             }
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"meta" => {
-                    if parent.len() != 2 || parent[1] != "metadata" {
-                        return invalid!("not valid opf meta empty");
-                    } else {
-                        let meta = create_meta(&e);
-                        if let Ok(m) = meta {
-                            book.add_meta(m);
-                        }
+            Ok(Event::Empty(e)) => if e.name().as_ref() == b"meta" {
+                if parent.len() != 2 || parent[1] != "metadata" {
+                    return invalid!("not valid opf meta empty");
+                } else {
+                    let meta = create_meta(&e);
+                    if let Ok(m) = meta {
+                        book.add_meta(m);
                     }
                 }
-                _ => {}
             },
             Ok(Event::GeneralRef(e)) => {
                 if reading_text {
                     let t = e.decode().map_err(IError::Encoding)?;
                     if t == "amp" {
-                        text.push_str("&");
+                        text.push('&');
                     } else if t == "lt" {
-                        text.push_str("<");
+                        text.push('<');
                     } else if t == "gt" {
-                        text.push_str(">");
+                        text.push('>');
                     } else if t == "apos" {
-                        text.push_str("'");
+                        text.push('\'');
                     } else if t == "quot" {
-                        text.push_str("\"");
+                        text.push('"');
                     }
                 }
             }
@@ -234,45 +228,39 @@ fn read_spine_xml(
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"spine" => {
-                        // 写入书本
-                        for ele in assets.iter() {
-                            if ele.id() == "toc" && !ele.file_name().contains(".xhtml") {
-                                continue;
-                            }
-                            book.add_assets(ele.clone());
+                if e.name().as_ref() == b"spine" {
+                    // 写入书本
+                    for ele in assets.iter() {
+                        if ele.id() == "toc" && !ele.file_name().contains(".xhtml") {
+                            continue;
                         }
+                        book.add_assets(ele.clone());
                     }
-                    _ => {}
                 }
             }
 
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"itemref" => {
-                    if let Ok(href) = e.try_get_attribute("idref") {
-                        if let Some(h) = href.map(|f| {
-                            f.unescape_value()
-                                .map_or_else(|_| String::new(), |v| v.to_string())
-                        }) {
-                            let xhtml = assets
-                                .iter()
-                                .enumerate()
-                                .find(|(_index, s)| s.id() == h.as_str());
-                            if let Some((index, xh)) = xhtml {
-                                book.add_chapter(
-                                    EpubHtml::default().with_file_name(xh.file_name()),
-                                );
-                                if !xh.id().eq_ignore_ascii_case("toc")
-                                    && xh.file_name().contains(".xhtml")
-                                {
-                                    assets.remove(index);
-                                }
+            Ok(Event::Empty(e)) => if e.name().as_ref() == b"itemref" {
+                if let Ok(href) = e.try_get_attribute("idref") {
+                    if let Some(h) = href.map(|f| {
+                        f.unescape_value()
+                            .map_or_else(|_| String::new(), |v| v.to_string())
+                    }) {
+                        let xhtml = assets
+                            .iter()
+                            .enumerate()
+                            .find(|(_index, s)| s.id() == h.as_str());
+                        if let Some((index, xh)) = xhtml {
+                            book.add_chapter(
+                                EpubHtml::default().with_file_name(xh.file_name()),
+                            );
+                            if !xh.id().eq_ignore_ascii_case("toc")
+                                && xh.file_name().contains(".xhtml")
+                            {
+                                assets.remove(index);
                             }
                         }
                     }
                 }
-                _ => {}
             },
 
             _ => {
@@ -356,15 +344,13 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"package" => {
                     parent.push("package".to_string());
-                    for attribute in e.attributes() {
-                        if let Ok(attr) = attribute {
-                            if attr.key.as_ref() == b"version" {
-                                let ver = attr.unescape_value()?.trim().to_string();
-                                if ver.len() > 0 {
-                                    book.set_version(&ver);
-                                } else {
-                                    book.set_version("2.0");
-                                }
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"version" {
+                            let ver = attr.unescape_value()?.trim().to_string();
+                            if !ver.is_empty() {
+                                book.set_version(&ver);
+                            } else {
+                                book.set_version("2.0");
                             }
                         }
                     }
@@ -396,16 +382,12 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                 }
             }
             Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"package" => {
-                        if parent.len() == 1 && parent[0] == "package" {
-                        } else {
-                            // xml错误
-                        }
-                        // parent.remove(to_string());
+                if e.name().as_ref() == b"package" {
+                    if parent.len() == 1 && parent[0] == "package" {
+                    } else {
+                        // xml错误
                     }
-
-                    _ => {}
+                    // parent.remove(to_string());
                 }
             }
             _ => {}
@@ -541,15 +523,15 @@ fn read_nav_point_xml(
                 if parent.last().map(|f| f == "text").unwrap_or(false) {
                     let t = e.decode().map_err(IError::Encoding)?;
                     if t == "amp" {
-                        title.push_str("&");
+                        title.push('&');
                     } else if t == "lt" {
-                        title.push_str("<");
+                        title.push('<');
                     } else if t == "gt" {
-                        title.push_str(">");
+                        title.push('>');
                     } else if t == "apos" {
-                        title.push_str("'");
+                        title.push('\'');
                     } else if t == "quot" {
-                        title.push_str("\"");
+                        title.push('"');
                     }
                 }
             }
@@ -660,10 +642,7 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                         .attributes()
                         .find(|a| a.as_ref().unwrap().key.as_ref() == b"class")
                     {
-                        match class.unwrap().value.as_ref() {
-                            b"toc-label" => in_label = true,
-                            _ => (),
-                        }
+                        if class.unwrap().value.as_ref() == b"toc-label" { in_label = true }
                     }
                 }
                 _ => (),
@@ -782,11 +761,11 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
                                     .file_name()
                                     .rfind("/")
                                     .map(|f| {
-                                        return toc
+                                        toc
                                             .file_name()
                                             .get(..(f + 1))
                                             .unwrap_or_default()
-                                            .to_string();
+                                            .to_string()
                                     })
                                     .unwrap_or_default();
                                 read_nav_xhtml(content.as_str(), root, book)?;

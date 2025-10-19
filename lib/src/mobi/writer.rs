@@ -71,7 +71,7 @@ impl PDBRecordInfo {
         writer.write_u32(self.offset)?;
         // 合并字节
         let mut v = self.unique_id;
-        v = v | ((self.attribute as u32) << 24);
+        v |= (self.attribute as u32) << 24;
         writer.write_u32(v)?;
 
         Ok(())
@@ -173,7 +173,7 @@ impl MOBIHeader {
         // exth 的length需要处理,写完exth后再回来更正这里的值
         let full_name_offset_index = writer.stream_position()?;
         writer.write_u32(self.full_name_offset)?;
-        writer.write_u32(book.title().as_bytes().len() as u32)?;
+        writer.write_u32(book.title().len() as u32)?;
         writer.write_u32(self.locale)?;
         writer.write_u32(self.input_language)?;
         writer.write_u32(self.output_language)?;
@@ -328,7 +328,7 @@ struct PDBRecord {
 /// 假设一共五个字节，前三个字节为utf8，此时即可返回true，忽略后面的字节
 ///
 pub(crate) fn decode_utf8_ignore(value: &[u8]) -> bool {
-    if value.len() == 0 {
+    if value.is_empty() {
         return false;
     }
     let mut tmp = &value[..1];
@@ -429,7 +429,7 @@ impl MobiWriter<std::fs::File> {
             .truncate(true)
             .write(true)
             .open(file)
-            .map_err(|e| IError::Io(e))
+            .map_err(IError::Io)
             .map(|f| {
                 MobiWriter::new(f)
                     .with_ident(ident)
@@ -541,7 +541,7 @@ impl<T: Write + Seek> MobiWriter<T> {
 
         let mut pos = Vec::new();
         let nav = book.nav().as_slice();
-        if nav.len() > 0 {
+        if !nav.is_empty() {
             // 添加目录html片段
             let (mut n_text, n_pos) = generate_human_nav_xml(text.len(), nav, book.title());
             pos = n_pos;
@@ -563,7 +563,7 @@ impl<T: Write + Seek> MobiWriter<T> {
 
                 let pos_format = format!("{:0width$}", text.len(), width = p.length);
                 for (i, v) in pos_format.as_bytes().iter().enumerate() {
-                    text[p.index + i] = v.clone();
+                    text[p.index + i] = *v;
                 }
             }
 
@@ -588,7 +588,7 @@ impl<T: Write + Seek> MobiWriter<T> {
         // 添加结尾的目录，这部分应该是给阅读器看的
 
         let nav = book.nav().as_slice();
-        if nav.len() > 0 {
+        if !nav.is_empty() {
             let p = text.len();
             let mut n_text = generate_reader_nav_xml(p, nav, &pos_value);
             text.append(&mut n_text);
@@ -597,7 +597,7 @@ impl<T: Write + Seek> MobiWriter<T> {
 
             let pos_format = format!("{:0width$}", p, width = toc_pos_len);
             for (i, v) in pos_format.as_bytes().iter().enumerate() {
-                text[toc_pos + i] = v.clone();
+                text[toc_pos + i] = *v;
             }
         }
 
@@ -716,7 +716,7 @@ impl<T: Write + Seek> MobiWriter<T> {
             extra_index: [0u32; 6],
             first_non_book_index: first_non_text_record_idx as u32,
             full_name_offset: 0,
-            full_name_length: book.title().as_bytes().len() as u32,
+            full_name_length: book.title().len() as u32,
             locale: 9,
             input_language: 0,
             output_language: 0,

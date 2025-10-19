@@ -27,7 +27,6 @@ pub(crate) struct PDBHeader {
     /// 0x0010 (16 decimal) Okay to install newer over existing copy, if present on PalmPilot
     /// 0x0020 (32 decimal) Force the PalmPilot to reset after this database is installed
     /// 0x0040 (64 decimal) Don't allow copy of file to be beamed to other Pilot.
-    ///
     pub(crate) attribute: u16,
     /// file version
     pub(crate) version: u16,
@@ -38,7 +37,6 @@ pub(crate) struct PDBHeader {
     /// If the time has the top bit set, it's an unsigned 32-bit number counting from 1st Jan 1904
     ///
     /// If the time has the top bit clear, it's a signed 32-bit number counting from 1st Jan 1970.
-    ///
     pub(crate) createion_date: u32,
     /// No. of seconds since start of January 1, 1904.
     pub(crate) modify_date: u32,
@@ -139,9 +137,9 @@ pub(crate) struct MOBIHeader {
     pub(crate) huffman_record_offset: u32,
     /// The number of huffman compression records.
     pub(crate) huffman_record_count: u32,
-    ///     
+    /// offset
     pub(crate) huffman_table_offset: u32,
-    ///     
+    /// len
     pub(crate) huffman_table_length: u32,
     /// bitfield. if bit 6 (0x40) is set, then there's an EXTH record
     /// 当从低到高第六位为1，代表有EXTH，与其他bit无关
@@ -167,11 +165,9 @@ pub(crate) struct MOBIHeader {
     pub(crate) last_content_record_number: u16,
     // FCIS record count? Use 0x00000001.
     // unknown_3: u32,
-    ///
     pub(crate) fcis_record_number: u32,
     // Use 0x00000001.
     // unknown_4: u32,
-    ///
     pub(crate) flis_record_number: u32,
     // Use 0x00000001.flis record count?
     // unknown_5: u32,
@@ -204,10 +200,8 @@ pub(crate) struct EXTHRecord {
     /// Data，L - 8
     pub(crate) data: Vec<u8>,
 }
-///
-///
+
 /// 参见 [https://wiki.mobileread.com/wiki/MOBI#EXTH_Header]
-///
 #[derive(Default, Debug)]
 pub(crate) struct EXTHHeader {
     // the characters E X T H
@@ -219,32 +213,7 @@ pub(crate) struct EXTHHeader {
     /// 不定长度的 record,
     pub(crate) record_list: Vec<EXTHRecord>, // 多余的字节均为无用填充，跳过即可
 }
-#[derive(Debug, Default)]
-pub(crate) struct INDXRecord {
-    /// 在之前还有 4个字节的 Identifier，固定为I N D X
-    /// the length of the INDX header, including the previous 4 bytes
-    pub(crate) len: u32,
-    pub(crate) _type: u32,
-    /// 前面还有8个无用字节
-    /// the offset to the IDXT section
-    pub(crate) idxt_start: u32,
-    /// the number of index records
-    pub(crate) index_count: u32,
-    /// 1252 = CP1252 (WinLatin1); 65001 = UTF-8
-    pub(crate) index_encoding: u32,
-    /// the language code of the index
-    pub(crate) index_language: u32,
-    /// the number of index entries
-    pub(crate) total_index_count: u32,
-    /// the offset to the ORDT section
-    pub(crate) ordt_start: u32,
-    /// the offset to the LIGT section
-    pub(crate) ligt_start: u32,
-    /// 文档没有描述
-    pub(crate) ligt_count: u32,
-    /// 文档没有描述
-    pub(crate) cncx_count: u32,
-}
+
 /// 格式化时间戳
 pub(crate) fn do_time_format(value: u32) -> String {
     if value & 0x80000000 == 0x80000000 {
@@ -261,7 +230,7 @@ fn u8_to_string<const N: usize>(v: [u8; N]) -> String {
     // v[2] = (value >> 8 & 0xff) as u8;
     // v[3] = (value & 0xff) as u8;
 
-    String::from_utf8(v.to_vec()).unwrap_or(String::new())
+    String::from_utf8(v.to_vec()).unwrap_or_default()
 }
 impl std::fmt::Display for PDBHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -284,16 +253,4 @@ impl std::fmt::Display for PDBHeader {
 
             )
     }
-}
-#[derive(Debug)]
-pub(crate) struct NCX {
-    pub(crate) index: usize,
-    pub(crate) offset: Option<usize>,
-    pub(crate) size: Option<usize>,
-    pub(crate) label: String,
-    pub(crate) heading_lebel: usize,
-    pub(crate) pos: usize,
-    pub(crate) parent: Option<usize>,
-    pub(crate) first_child: Option<usize>,
-    pub(crate) last_child: Option<usize>,
 }

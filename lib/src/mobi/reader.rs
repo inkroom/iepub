@@ -6,7 +6,6 @@
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
     io::{BufReader, Read, Seek, SeekFrom},
     sync::atomic::AtomicUsize,
 };
@@ -18,8 +17,7 @@ use crate::{
 
 use super::{
     common::{
-        EXTHHeader, EXTHRecord, INDXRecord, MOBIDOCHeader, MOBIHeader, PDBHeader, PDBRecordInfo,
-        NCX,
+        EXTHHeader, EXTHRecord, MOBIDOCHeader, MOBIHeader, PDBHeader, PDBRecordInfo,
     },
     core::MobiAssets,
     image::{get_suffix, read_image_recindex_from_html, Cover},
@@ -29,8 +27,8 @@ use super::{
 fn vec_u8_to_u64(v: &[u8]) -> u64 {
     let mut u64: u64 = 0;
     for ele in v {
-        u64 = u64 << 8;
-        u64 = u64 | (*ele as u64)
+        u64 <<= 8;
+        u64 |= *ele as u64
     }
     u64
 }
@@ -285,38 +283,6 @@ impl EXTHHeader {
     }
 }
 
-impl INDXRecord {
-    pub fn load<T>(reader: &mut T) -> IResult<Self>
-    where
-        T: ReadCount,
-    {
-        let mut v = Self::default();
-
-        if reader.read_string(4)? != "INDX" {
-            return Err(IError::InvalidArchive(Cow::from("not a indx")));
-        }
-
-        v.len = reader.read_u32()?;
-        v._type = reader.read_u32()?;
-        reader.skip(8)?;
-        v.idxt_start = reader.read_u32()?;
-        v.index_count = reader.read_u32()?;
-        v.index_encoding = reader.read_u32()?;
-        v.index_language = reader.read_u32()?;
-        v.total_index_count = reader.read_u32()?;
-        v.ordt_start = reader.read_u32()?;
-        v.ligt_start = reader.read_u32()?;
-        v.ligt_count = reader.read_u32()?;
-        v.cncx_count = reader.read_u32()?;
-
-        // 整个indx不止文档里的56个字节，多出的长度应该就是 index value
-        reader.skip((v.len - 56).into())?;
-        // reader.seek(SeekFrom::Start(start + v.len as u64))?;
-
-        Ok(v)
-    }
-}
-
 /// 计算一个数字 有多少位是1
 fn count_bit(v: u32) -> usize {
     let mut count = 0;
@@ -325,31 +291,9 @@ fn count_bit(v: u32) -> usize {
         if (nv & 1) == 1 {
             count += 1;
         }
-        nv = nv >> 1;
-    }
-    return count;
-}
-/// 统计有多少位0 ，因为不同类型循环次数不同，会非常影响结果
-fn count_unset_end(v: u8) -> usize {
-    let mut count = 0;
-    let mut x = v;
-    while (x & 1) == 0 {
-        x = x >> 1;
-        count += 1;
+        nv >>= 1;
     }
     count
-}
-fn get_var_len(byte: &[u8]) -> (usize, usize) {
-    let mut value: usize = 0;
-    let mut length: usize = 0;
-    for ele in byte {
-        value = (value << 7) | ((ele & 0b111_1111) as usize);
-        length += 1;
-        if ele & 0b1000_0000 >= 1 {
-            break;
-        }
-    }
-    (value, length)
 }
 
 // https://wiki.mobileread.com/wiki/PDB#Intro_to_the_Database_format
@@ -369,25 +313,11 @@ fn get_var_len(byte: &[u8]) -> (usize, usize) {
 
 mod ext {
     use std::{
-        collections::HashMap,
         io::{Read, Seek, SeekFrom},
     };
 
     use crate::common::{IError, IResult};
 
-    pub(crate) trait NCXExt {
-        fn get_value(&self, index: u8) -> Option<usize>;
-        fn get_value_or(&self, index: u8, default: usize) -> usize;
-    }
-
-    impl NCXExt for HashMap<u8, Vec<usize>> {
-        fn get_value(&self, index: u8) -> Option<usize> {
-            self.get(&index).and_then(|f| f.get(0)).map(|f| f.clone())
-        }
-        fn get_value_or(&self, index: u8, default: usize) -> usize {
-            self.get_value(index).unwrap_or(default)
-        }
-    }
     pub(crate) trait ReadCount: Read + Seek {
         fn read_u8(&mut self) -> IResult<u8> {
             let mut out = [0u8; 1];
@@ -398,9 +328,9 @@ mod ext {
             let mut out = [0u8; 2];
             let mut res: u16 = 0;
             self.read_exact(&mut out)?;
-            for i in 0..out.len() {
-                res = res << 8;
-                res = res | out[i] as u16;
+            for i in out {
+                res <<= 8;
+                res |= i as u16;
             }
             Ok(res)
         }
@@ -408,9 +338,9 @@ mod ext {
             let mut out = [0u8; 4];
             let mut res: u32 = 0;
             self.read_exact(&mut out)?;
-            for i in 0..out.len() {
-                res = res << 8;
-                res = res | out[i] as u32;
+            for i in out {
+                res <<= 8;
+                res |= i as u32;
             }
 
             Ok(res)
@@ -420,9 +350,9 @@ mod ext {
             let mut res: u64 = 0;
             self.read_exact(&mut out)?;
 
-            for i in 0..out.len() {
-                res = res << 8;
-                res = res | out[i] as u64;
+            for i in out {
+                res <<= 8;
+                res |= i as u64;
             }
 
             Ok(res)
@@ -444,7 +374,7 @@ mod ext {
 
         fn skip(&mut self, limit: u64) -> IResult<u64> {
             self.seek(SeekFrom::Current(limit as i64))
-                .map_err(|f| IError::Io(f))
+                .map_err(IError::Io)
         }
     }
 
@@ -453,23 +383,6 @@ mod ext {
 
 use ext::ReadCount;
 
-impl NCX {
-    fn from(index: usize, label: String, map: &HashMap<u8, Vec<usize>>) -> Self {
-        use ext::NCXExt;
-
-        NCX {
-            index,
-            offset: map.get_value(1),
-            size: map.get_value(2),
-            label,
-            heading_lebel: map.get_value_or(4, 0),
-            pos: map.get_value_or(6, 0),
-            parent: map.get_value(21),
-            first_child: map.get_value(22),
-            last_child: map.get_value(23),
-        }
-    }
-}
 /// 判断是否是mobi
 pub fn is_mobi<T>(value: &mut T) -> IResult<bool>
 where
@@ -573,180 +486,11 @@ impl<T: Read + Seek> MobiReader<T> {
         let raw = self.read_text_raw()?;
         let file_pos = read_guide_filepos(&raw[..])?;
 
-        if let Some(toc) = file_pos.map_or(None, |v| sec.iter().find(|s| s.end > v)) {
-            return read_nav_xml(toc.data.as_bytes().to_vec(), &mut self.id).map(|s| Some(s));
+        if let Some(toc) = file_pos.and_then(|v| sec.iter().find(|s| s.end > v)) {
+            return read_nav_xml(toc.data.as_bytes().to_vec(), &mut self.id).map(Some);
         }
 
         Ok(None)
-    }
-
-    /// 解析目录
-    pub(crate) fn read_nav(&mut self) -> IResult<()> {
-        if self.mobi_header.indx_record_offset < 0xffffffff {
-            self.seek_record_offset(self.mobi_header.indx_record_offset)?;
-
-            let indx = INDXRecord::load(&mut self.reader)?;
-
-            if self.reader.read_string(4)? != "TAGX" {
-                return Err(IError::InvalidArchive(Cow::from("not a tagx")));
-            }
-            let mut tagx_table: Vec<[u8; 4]> = Vec::new();
-            let len = self.reader.read_u32()?;
-            // the number of control bytes
-            let tagx_control_byte_count = self.reader.read_u32()?;
-
-            for _ in 0..((len - 12) / 4) {
-                // 四个字节的含义
-                // The tag table entries are multiple of 4 bytes. The first byte is the tag, the second byte the number of values, the third byte the bit mask and the fourth byte indicates the end of the control byte. If the fourth byte is 0x01, all other bytes of the entry are zero.
-                let mut v = [0u8; 4];
-                self.reader.read_exact(&mut v)?;
-
-                tagx_table.push(v);
-            }
-
-            // 剩余字段的解析方式文档里没有再多描述，只能翻译别的项目代码
-            let mut cntx = HashMap::new();
-            let mut cncx_record_offset = 0;
-            for i in 0..indx.cncx_count {
-                let (now, offset) = self.seek_record_offset(
-                    self.mobi_header.indx_record_offset + indx.index_count + 1 + i,
-                )?;
-
-                let mut record = Vec::new();
-                self.reader
-                    .get_mut()
-                    .take(offset - now)
-                    .read_to_end(&mut record)?;
-
-                let mut pos = 0;
-
-                while pos < record.len() {
-                    let index = pos;
-                    let bytes = &record[pos..(pos + 4)];
-                    let (value, length) = get_var_len(&bytes[0..]);
-                    pos += length;
-                    let result = &record[pos..(pos + value)];
-                    pos += value;
-                    cntx.insert(
-                        cncx_record_offset + index,
-                        String::from_utf8(result.to_vec()).unwrap_or(String::new()),
-                    );
-                }
-                cncx_record_offset += 0x10000;
-            }
-
-            let mut table = Vec::new();
-            for i in 0..indx.index_count {
-                let (start, _) =
-                    self.seek_record_offset(self.mobi_header.indx_record_offset + 1 + i)?;
-                let n_index = INDXRecord::load(&mut self.reader)?;
-
-                for j in 0..n_index.index_count {
-                    let offset_offset = (n_index.idxt_start + 4 + 2 * j) as u64;
-                    self.reader.seek(SeekFrom::Start(start + offset_offset))?;
-                    let offset = self.reader.read_u16()? as u64;
-                    self.reader.seek(SeekFrom::Start(start + offset as u64))?;
-
-                    let length = self.reader.read_u8()?;
-                    self.reader
-                        .seek(SeekFrom::Start(start + offset as u64 + 1))?;
-                    let _name = self.reader.read_string(length as u64)?;
-
-                    let mut tags = Vec::new();
-
-                    let start_pos = offset + 1 + length as u64;
-                    let mut control_byte_index = 0;
-                    let mut pos = start_pos + tagx_control_byte_count as u64;
-                    #[inline]
-                    fn get_array_var_len(
-                        reader: &mut impl ReadCount,
-                        start: u64,
-                        pos: u64,
-                    ) -> IResult<(usize, usize)> {
-                        reader.seek(SeekFrom::Start(start + pos))?;
-                        let mut buf = [0u8; 4];
-                        reader.read_exact(&mut buf)?;
-                        Ok(get_var_len(&buf))
-                    }
-
-                    for ele in &tagx_table {
-                        let tag = ele[0];
-                        let num_values = ele[1];
-                        let mask = ele[2];
-                        let end = ele[3];
-
-                        if end & 1 >= 1 {
-                            control_byte_index += 1;
-                            continue;
-                        }
-
-                        let offset: u64 = start_pos + control_byte_index;
-                        self.reader.seek(SeekFrom::Start(start + offset))?;
-                        let value = self.reader.read_u8()? & mask;
-                        if value == mask {
-                            if count_bit(mask as u32) > 1 {
-                                let (value, length) =
-                                    get_array_var_len(&mut self.reader, start, pos)?;
-
-                                tags.push((tag, None, Some(value), num_values));
-                                pos += length as u64;
-                            } else {
-                                tags.push((tag, Some(1), None, num_values));
-                            }
-                        } else {
-                            tags.push((
-                                tag,
-                                Some(value >> count_unset_end(mask)),
-                                None,
-                                num_values,
-                            ));
-                        }
-                    }
-
-                    let mut tag_map: HashMap<u8, Vec<usize>> = HashMap::new();
-                    for (tag, value_count, value_bytes, num_values) in tags {
-                        let mut values = Vec::new();
-                        if let Some(v) = value_count {
-                            for _m in 0..(v as u32 * (num_values as u32)) {
-                                let (value, length) =
-                                    get_array_var_len(&mut self.reader, start, pos)?;
-
-                                values.push(value);
-                                pos += length as u64;
-                            }
-                        } else {
-                            let mut count: usize = 0;
-                            while count < value_bytes.unwrap() {
-                                let (value, length) =
-                                    get_array_var_len(&mut self.reader, start, pos)?;
-
-                                values.push(value);
-                                pos += length as u64;
-                                count += length;
-                            }
-                        }
-                        tag_map.insert(tag, values);
-                    }
-                    table.push((
-                        cntx.get(tag_map.get(&3).and_then(|f| f.get(0)).unwrap_or(&0)),
-                        tag_map,
-                    ));
-                }
-            }
-
-            let items = table.iter().enumerate().map(|(index, (name, map))| {
-                return NCX::from(
-                    index,
-                    if let Some(n) = name {
-                        n.to_string()
-                    } else {
-                        String::new()
-                    },
-                    &map,
-                );
-            });
-        }
-        Ok(())
     }
 
     /// 解析封面
@@ -789,12 +533,12 @@ impl<T: Read + Seek> MobiReader<T> {
                     .read_to_end(&mut image)
                     .unwrap();
 
-                return MobiAssets {
+                MobiAssets {
                     _file_name: format!("{}.{}", f, get_suffix(image.as_slice())),
                     media_type: String::new(),
                     _data: Some(image),
-                    recindex: f.clone(),
-                };
+                    recindex: *f,
+                }
             })
             .collect())
     }
@@ -839,7 +583,7 @@ impl<T: Read + Seek> MobiReader<T> {
 
         self.text_cache = Some(text.clone());
 
-        return Ok(text);
+        Ok(text)
     }
 
     /// 解码文本
@@ -848,7 +592,7 @@ impl<T: Read + Seek> MobiReader<T> {
             // iSO-8859-1
             Ok(data.iter().map(|&c| c as char).collect())
         } else {
-            String::from_utf8(data.to_vec()).map_err(|e| IError::Utf8(e))
+            String::from_utf8(data.to_vec()).map_err(IError::Utf8)
         }
     }
 
@@ -926,7 +670,7 @@ pub(crate) struct TextSection {
 /// 看了好几遍，都还是没看懂文档是什么意思，只能把别的项目里的代码给翻译过来
 ///
 fn get_mobi_variable_width_len(data: &[u8], tail_circle_count: usize, flag: u32) -> usize {
-    let mut n_data = &data[..];
+    let mut n_data = data;
     for _ in 0..tail_circle_count {
         let res = buffer_get_var_len(n_data) as usize;
         n_data = &n_data[..(n_data.len() - res)];
@@ -951,7 +695,7 @@ fn buffer_get_var_len(data: &[u8]) -> u32 {
         value = (value << 7) | (v & 0b111_1111)
     }
 
-    return value;
+    value
 }
 
 /// 解压缩
@@ -967,8 +711,8 @@ fn uncompression_lz77(data: &[u8]) -> Vec<u8> {
         if char == 0 {
             buffer.push(char);
         } else if char <= 8 {
-            for i in offset..(offset + char as usize) {
-                buffer.push(data[i]);
+            for i in data.iter().skip(offset).take(char as usize) {
+                buffer.push(*i);
             }
             offset += char as usize;
         } else if char <= 0x7f {
@@ -977,7 +721,7 @@ fn uncompression_lz77(data: &[u8]) -> Vec<u8> {
             let next = data[offset];
             offset += 1;
             let cc = char as usize;
-            let distance = ((((cc << 8) | next as usize) >> 3) & 0x7ff) as usize;
+            let distance = (((cc << 8) | next as usize) >> 3) & 0x7ff;
             let lz_length = (next & 0x7) + 3;
             let mut buffer_size = buffer.len();
 

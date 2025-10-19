@@ -44,14 +44,14 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>, id: &mut AtomicUsize) -> IResult<Vec<Mo
                     // 这里的上一级应该只有 p, 上一级是 blockquote 的情况 在text的时候交给其他方法处理了
                     let pa = &parent[parent.len() - 1];
                     if pa == "p" {
-                        let mut n = MobiNav::default({ id.fetch_add(1, Ordering::SeqCst) });
+                        let mut n = MobiNav::default(id.fetch_add(1, Ordering::SeqCst));
                         if let Some(pos) = e.get_file_pos() {
                             n.href = pos;
                         }
                         now = Some(n);
                     } else if pa == "blockquote" {
                         // 直接读到这里，说明没有二级目录，直接就是一级目录，所以需要
-                        let mut n = MobiNav::default({ id.fetch_add(1, Ordering::SeqCst) });
+                        let mut n = MobiNav::default(id.fetch_add(1, Ordering::SeqCst));
                         if let Some(pos) = e.get_file_pos() {
                             n.href = pos;
                         }
@@ -194,7 +194,7 @@ fn generate_human_nav_item_xml(start: usize, nav: &[MobiNav]) -> (Vec<u8>, Vec<N
             chap_id: ele.chap_id,
         };
         let mut title = ele.title();
-        if title.len() == 0 {
+        if title.is_empty() {
             // 如果没有title的话，读取xml的时候这个章节就读不到了
             title = "&#x20;"
         }
@@ -257,7 +257,7 @@ fn generate_reader_nav_item_xml(
             text.append(&mut t.as_bytes().to_vec());
         } else {
             let mut title = ele.title();
-            if title.len() == 0 {
+            if title.is_empty() {
                 // 如果没有title的话，读取xml的时候这个章节就读不到了
                 title = "&#x20;"
             }
@@ -287,7 +287,7 @@ pub(crate) fn generate_reader_nav_xml(
     pos_value: &HashMap<usize, usize>,
 ) -> Vec<u8> {
     let mut text = Vec::new();
-    text.append(&mut format!(r#"<p height="1em" width="0pt" align="center"><font size="7"><b>Table of Contents</b></font></p>"#).as_bytes().to_vec());
+    text.append(&mut r#"<p height="1em" width="0pt" align="center"><font size="7"><b>Table of Contents</b></font></p>"#.to_string().as_bytes().to_vec());
 
     let mut n_text = generate_reader_nav_item_xml(text.len() + start, nav, pos_value);
 
@@ -310,7 +310,7 @@ fn read_blockquote(
                 let name = String::from_utf8(e.name().as_ref().to_vec())?;
 
                 if name == "a" {
-                    now = Some(MobiNav::default({ id.fetch_add(1, Ordering::SeqCst) }));
+                    now = Some(MobiNav::default(id.fetch_add(1, Ordering::SeqCst)));
 
                     // quick_xml 不支持 unquoted 的属性值解析，所以只能想办法自己来了
                     if let Some(pos) = e.get_file_pos() {
@@ -434,7 +434,7 @@ impl<'a> FilePosAttr for BytesStart<'a> {
                     // 双引号
                     except = 0x22;
                     index += 1;
-                } else if now >= 0x30 && now <= 0x39 {
+                } else if (0x30..=0x39).contains(&now) {
                     // 数字0-9
                 } else {
                     // 其他不允许，这里就直接结束掉
@@ -444,9 +444,9 @@ impl<'a> FilePosAttr for BytesStart<'a> {
                 let mut res: usize = 0;
                 while index < attr.len() {
                     now = attr[index];
-                    if now >= 0x30 && now <= 0x39 {
+                    if (0x30..=0x39).contains(&now) {
                         // 数字0-9
-                        res = res * 10;
+                        res *= 10;
                         res += (now - 0x30) as usize;
                     } else if now == 0x20 || now == 0x27 || now == 0x22 {
                         break;

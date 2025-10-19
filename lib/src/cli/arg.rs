@@ -216,7 +216,7 @@ pub(crate) fn parse_global_arg(
                     v.values.get_or_insert_with(Vec::new).push(trim_arg(ele));
                 }
                 OptionType::Number => {
-                    if let Ok(_) = ele.parse::<isize>() {
+                    if ele.parse::<isize>().is_ok() {
                         let v = arg.opts.last_mut().unwrap();
                         v.value = Some(trim_arg(ele));
                     } else {
@@ -350,7 +350,7 @@ pub(crate) fn parse_command_arg(
                         .push(trim_arg(&ele));
                 }
                 OptionType::Number => {
-                    if let Ok(_) = ele.parse::<isize>() {
+                    if ele.parse::<isize>().is_ok() {
                         arg.group
                             .last_mut()
                             .and_then(|f| f.opts.last_mut())
@@ -404,11 +404,10 @@ fn check_command_opt(arg: &Arg, command_option_def: &[CommandOptionDef]) {
             .collect();
         if !c.is_empty() {
             for def in &ele.opts {
-                if def.required {
-                    if !c[0].opts.iter().any(|f| f.key == def.key) {
+                if def.required
+                    && !c[0].opts.iter().any(|f| f.key == def.key) {
                         parse_err!("sub command {} need arg -{}", ele.command, def.key)
                     }
-                }
             }
         }
     }

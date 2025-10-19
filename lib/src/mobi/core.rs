@@ -160,7 +160,7 @@ impl MobiAssets {
         }
     }
     pub fn data(&self) -> Option<&[u8]> {
-        self._data.as_ref().map(|f| f.as_slice())
+        self._data.as_deref()
     }
     pub fn file_name(&self) -> &str {
         &self._file_name
@@ -373,7 +373,7 @@ impl<T: Read + Seek> MobiReader<T> {
                 recindex: 0,
             }),
             images: self.read_all_image()?,
-            nav: nav.unwrap_or_else(|| Vec::new()),
+            nav: nav.unwrap_or_else(Vec::new),
         })
     }
 }

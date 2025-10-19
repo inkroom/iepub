@@ -13,7 +13,7 @@ impl Cover {
     }
     pub(crate) fn get_file_name(&self) -> String {
         let image = &self.0;
-        return format!("cover.{}", get_suffix(image));
+        format!("cover.{}", get_suffix(image))
     }
 }
 
@@ -168,12 +168,11 @@ pub(crate) fn get_attr_value(attr: &[u8], key: &str) -> (Option<Vec<u8>>, usize,
             }
         }
 
-        if now == 0x2f || now == 0x3e {
-            if quo == 0 {
+        if (now == 0x2f || now == 0x3e)
+            && quo == 0 {
                 // 读到了结束符/>,未被引号包裹的情况下认为结束了
                 return (None, index, 0);
             }
-        }
 
         let mut j = 0;
         while j < key.len() {
@@ -252,7 +251,7 @@ pub(crate) fn get_attr_value(attr: &[u8], key: &str) -> (Option<Vec<u8>>, usize,
         return (None, index, 0);
     }
 
-    return (Some(res), s, len);
+    (Some(res), s, len)
 }
 
 trait AttrExt {
@@ -290,7 +289,7 @@ impl<'a> AttrExt for quick_xml::events::BytesStart<'a> {
                     // 双引号
                     except = 0x22;
                     index += 1;
-                } else if now >= 0x30 && now <= 0x39 {
+                } else if (0x30..=0x39).contains(&now) {
                     // 数字0-9
                 } else {
                     // 其他不允许，这里就直接结束掉
@@ -300,9 +299,9 @@ impl<'a> AttrExt for quick_xml::events::BytesStart<'a> {
                 let mut res: usize = 0;
                 while index < attr.len() {
                     now = attr[index];
-                    if now >= 0x30 && now <= 0x39 {
+                    if (0x30..=0x39).contains(&now) {
                         // 数字0-9
-                        res = res * 10;
+                        res *= 10;
                         res += (now - 0x30) as usize;
                     } else if now == 0x20 || now == 0x27 || now == 0x22 {
                         break;
