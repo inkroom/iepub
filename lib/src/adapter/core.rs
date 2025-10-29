@@ -9,7 +9,7 @@ fn to_epub_nav(mobi: &MobiNav, parent: &str) -> EpubNav {
     n = n.with_title(mobi.title());
     n = n.with_file_name(format!("{parent}{}.xhtml", mobi.title).as_str());
 
-    for ele in mobi.children() {
+    for ele in mobi.child() {
         n.push(to_epub_nav(
             ele,
             format!("{parent}{}/", mobi.title()).as_str(),
@@ -26,7 +26,7 @@ fn get_mobi_chapter_nav<'a>(chap: &MobiHtml, nav: &'a [MobiNav]) -> Option<Vec<&
         if ele.id() == chap.nav_id() {
             return Some(vec![ele]);
         }
-        if let Some(mut v) = get_mobi_chapter_nav(chap, ele.children().as_slice()) {
+        if let Some(mut v) = get_mobi_chapter_nav(chap, ele.child().as_slice()) {
             v.insert(0, ele);
             return Some(v);
         }
