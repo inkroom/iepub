@@ -312,11 +312,14 @@ pub(crate) fn parse_command_arg(
                                         .find(|s| s.command == com.command)
                                         .map(|f| &mut f.opts)
                                     {
-                                        m.push(ArgOption {
-                                            key: key.to_string(),
-                                            value: None,
-                                            values: None,
-                                        })
+                                        if m.iter().all(|v| v.key != key) {
+                                            // 支持 -v 1 -v 2 写法
+                                            m.push(ArgOption {
+                                                key: key.to_string(),
+                                                value: None,
+                                                values: None,
+                                            })
+                                        }
                                     }
                                 }
                             }
@@ -453,7 +456,7 @@ impl OptUtil for &[ArgOption] {
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::arg::OptionType;
+    use crate::cli::arg::{OptUtil, OptionType};
 
     use super::{parse_command_arg, parse_global_arg, Arg, CommandOptionDef, OptionDef};
     fn create_option_def() -> Vec<OptionDef> {
@@ -646,6 +649,70 @@ mod tests {
             ..Default::default()
         }];
         parse_command_arg(&mut arg, args, command_option_def);
+    }
+
+    /// 测试多参数
+    #[test]
+    fn test_array() {
+        let mut arg = Arg::default();
+        let args = ["get-info", "-all", "43", "48"]
+            .iter()
+            .map(|f| f.to_string())
+            .collect();
+        let command_option_def = vec![CommandOptionDef {
+            command: "get-info".to_string(),
+            opts: vec![OptionDef {
+                key: "all".to_string(),
+                _type: OptionType::Array,
+                desc: "St".to_string(),
+                required: true,
+            }],
+            support_args: 0,
+            ..Default::default()
+        }];
+        parse_command_arg(&mut arg, args, command_option_def);
+
+        let v = arg
+            .group
+            .iter()
+            .find(|f| f.command == "get-info")
+            .map(|f| f.opts.as_slice())
+            .unwrap();
+
+        let s = v.get_values("all").unwrap();
+        assert_eq!(2, s.len());
+        assert_eq!("43", s[0]);
+        assert_eq!("48", s[1]);
+
+        let mut arg = Arg::default();
+        let args = ["get-info", "-all", "43", "-all", "48"]
+            .iter()
+            .map(|f| f.to_string())
+            .collect();
+        let command_option_def = vec![CommandOptionDef {
+            command: "get-info".to_string(),
+            opts: vec![OptionDef {
+                key: "all".to_string(),
+                _type: OptionType::Array,
+                desc: "St".to_string(),
+                required: true,
+            }],
+            support_args: 0,
+            ..Default::default()
+        }];
+        parse_command_arg(&mut arg, args, command_option_def);
+
+        let v = arg
+            .group
+            .iter()
+            .find(|f| f.command == "get-info")
+            .map(|f| f.opts.as_slice())
+            .unwrap();
+
+        let s = v.get_values("all").unwrap();
+        assert_eq!(2, s.len());
+        assert_eq!("43", s[0]);
+        assert_eq!("48", s[1]);
     }
 }
 
