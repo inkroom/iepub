@@ -16,9 +16,7 @@ use crate::{
 };
 
 use super::{
-    common::{
-        EXTHHeader, EXTHRecord, MOBIDOCHeader, MOBIHeader, PDBHeader, PDBRecordInfo,
-    },
+    common::{EXTHHeader, EXTHRecord, MOBIDOCHeader, MOBIHeader, PDBHeader, PDBRecordInfo},
     core::MobiAssets,
     image::{get_suffix, read_image_recindex_from_html, Cover},
     nav::{read_guide_filepos, read_nav_xml},
@@ -312,9 +310,7 @@ fn count_bit(v: u32) -> usize {
 // }
 
 mod ext {
-    use std::{
-        io::{Read, Seek, SeekFrom},
-    };
+    use std::io::{Read, Seek, SeekFrom};
 
     use crate::common::{IError, IResult};
 

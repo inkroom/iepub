@@ -260,15 +260,12 @@ impl MobiBook {
         self.chapters.iter_mut()
     }
 
-
     ///
     /// 查找章节
     ///
     ///
     pub fn get_chapter_mut(&mut self, nav_id: usize) -> Option<&mut MobiHtml> {
-        self.chapters
-            .iter_mut()
-            .find(|s| s.nav_id() == nav_id)
+        self.chapters.iter_mut().find(|s| s.nav_id() == nav_id)
     }
 
     pub fn chapters(&self) -> std::slice::Iter<MobiHtml> {
