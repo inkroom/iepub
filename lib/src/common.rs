@@ -235,7 +235,7 @@ pub struct DateTimeFormater {
     timezone_offset: i16,
 }
 
-impl Default for DateTimeFormater{
+impl Default for DateTimeFormater {
     fn default() -> Self {
         Self::new(
             std::time::SystemTime::now()

@@ -168,11 +168,10 @@ pub(crate) fn get_attr_value(attr: &[u8], key: &str) -> (Option<Vec<u8>>, usize,
             }
         }
 
-        if (now == 0x2f || now == 0x3e)
-            && quo == 0 {
-                // 读到了结束符/>,未被引号包裹的情况下认为结束了
-                return (None, index, 0);
-            }
+        if (now == 0x2f || now == 0x3e) && quo == 0 {
+            // 读到了结束符/>,未被引号包裹的情况下认为结束了
+            return (None, index, 0);
+        }
 
         let mut j = 0;
         while j < key.len() {

@@ -538,18 +538,18 @@ fn get_section_from_html(body: &str, id: &str) -> IResult<Vec<u8>> {
                         .map(|f| f.to_string())
                         .map(|f| f == id)
                         .unwrap_or(false)
-                    {
-                        let v = reader
-                            .read_text(body.to_end().to_owned().name())
-                            .map(|f| f.as_bytes().to_vec())
-                            .map_err(IError::Xml)
-                            .ok();
+                {
+                    let v = reader
+                        .read_text(body.to_end().to_owned().name())
+                        .map(|f| f.as_bytes().to_vec())
+                        .map_err(IError::Xml)
+                        .ok();
 
-                        if let Some(mut v) = v {
-                            content.append(&mut v);
-                            break;
-                        }
+                    if let Some(mut v) = v {
+                        content.append(&mut v);
+                        break;
                     }
+                }
             }
             _ => {}
         }

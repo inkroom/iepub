@@ -118,16 +118,18 @@ fn read_meta_xml(
                     parent.push(name);
                 }
             }
-            Ok(Event::Empty(e)) => if e.name().as_ref() == b"meta" {
-                if parent.len() != 2 || parent[1] != "metadata" {
-                    return invalid!("not valid opf meta empty");
-                } else {
-                    let meta = create_meta(&e);
-                    if let Ok(m) = meta {
-                        book.add_meta(m);
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"meta" {
+                    if parent.len() != 2 || parent[1] != "metadata" {
+                        return invalid!("not valid opf meta empty");
+                    } else {
+                        let meta = create_meta(&e);
+                        if let Ok(m) = meta {
+                            book.add_meta(m);
+                        }
                     }
                 }
-            },
+            }
             Ok(Event::GeneralRef(e)) => {
                 if reading_text {
                     let t = e.decode().map_err(IError::Encoding)?;
@@ -239,29 +241,31 @@ fn read_spine_xml(
                 }
             }
 
-            Ok(Event::Empty(e)) => if e.name().as_ref() == b"itemref" {
-                if let Ok(href) = e.try_get_attribute("idref") {
-                    if let Some(h) = href.map(|f| {
-                        f.unescape_value()
-                            .map_or_else(|_| String::new(), |v| v.to_string())
-                    }) {
-                        let xhtml = assets
-                            .iter()
-                            .enumerate()
-                            .find(|(_index, s)| s.id() == h.as_str());
-                        if let Some((index, xh)) = xhtml {
-                            book.add_chapter(
-                                EpubHtml::default().with_file_name(xh.file_name()),
-                            );
-                            if !xh.id().eq_ignore_ascii_case("toc")
-                                && xh.file_name().contains(".xhtml")
-                            {
-                                assets.remove(index);
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"itemref" {
+                    if let Ok(href) = e.try_get_attribute("idref") {
+                        if let Some(h) = href.map(|f| {
+                            f.unescape_value()
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        }) {
+                            let xhtml = assets
+                                .iter()
+                                .enumerate()
+                                .find(|(_index, s)| s.id() == h.as_str());
+                            if let Some((index, xh)) = xhtml {
+                                book.add_chapter(
+                                    EpubHtml::default().with_file_name(xh.file_name()),
+                                );
+                                if !xh.id().eq_ignore_ascii_case("toc")
+                                    && xh.file_name().contains(".xhtml")
+                                {
+                                    assets.remove(index);
+                                }
                             }
                         }
                     }
                 }
-            },
+            }
 
             _ => {
                 break;
@@ -642,7 +646,9 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                         .attributes()
                         .find(|a| a.as_ref().unwrap().key.as_ref() == b"class")
                     {
-                        if class.unwrap().value.as_ref() == b"toc-label" { in_label = true }
+                        if class.unwrap().value.as_ref() == b"toc-label" {
+                            in_label = true
+                        }
                     }
                 }
                 _ => (),
@@ -761,8 +767,7 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
                                     .file_name()
                                     .rfind("/")
                                     .map(|f| {
-                                        toc
-                                            .file_name()
+                                        toc.file_name()
                                             .get(..(f + 1))
                                             .unwrap_or_default()
                                             .to_string()
