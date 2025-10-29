@@ -15,7 +15,7 @@ quick-xml = { version = "0.38.3" }
 ab_glyph = { version = "0.2.32", optional = true }
 imageproc = { version = "0.25.0", optional = true}
 serde_json = { version = "1.0.145", optional = true }
-iepub-derive = { path = "../derive", version = "1.2.2" }
+iepub-derive = { path = "../derive", version = "1.2.3" }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 image = { version = "0.25.8", default-features = false, features = ["jpeg"], optional = true }
 
