@@ -204,11 +204,11 @@ fn generate_human_nav_item_xml(start: usize, nav: &[MobiNav]) -> (Vec<u8>, Vec<N
                 .to_vec(),
         );
 
-        if ele.children().len() > 0 {
+        if ele.child().len() > 0 {
             text.append(&mut r#"<ol height="0pt" width="0pt">"#.as_bytes().to_vec());
 
             let (mut n_text, f) =
-                generate_human_nav_item_xml(start + text.len(), ele.children().as_slice());
+                generate_human_nav_item_xml(start + text.len(), ele.child().as_slice());
             text.append(&mut n_text);
             file_pos.child = f;
 
@@ -247,7 +247,7 @@ fn generate_reader_nav_item_xml(
     let mut text = Vec::new();
     let len = 10;
     for ele in nav {
-        if ele.children().len() == 0 {
+        if ele.child().len() == 0 {
             let t = format!(
                 r#"<blockquote height="0pt" width="0pt"><a filepos={:0width$}>{}</a></blockquote>"#,
                 pos_value.get(&ele.chap_id).unwrap_or(&0),
@@ -271,7 +271,7 @@ fn generate_reader_nav_item_xml(
 
             let mut n_text = generate_reader_nav_item_xml(
                 start + text.len(),
-                ele.children().as_slice(),
+                ele.child().as_slice(),
                 pos_value,
             );
             text.append(&mut n_text);
@@ -784,8 +784,8 @@ mod tests {
         assert_eq!(1, n.len());
         assert_eq!("第一卷 天狼星天文台杀人事件", n[0].title());
 
-        assert_eq!(1, n[0].children().len());
-        assert_eq!("", n[0].children().next().unwrap().title());
+        assert_eq!(1, n[0].child().len());
+        assert_eq!("", n[0].child().next().unwrap().title());
 
         let xml = r#"<p height="1em" width="0pt" align="center">
         <font size="7">
@@ -803,8 +803,8 @@ mod tests {
         assert_eq!(1, n.len());
         assert_eq!("", n[0].title());
 
-        assert_eq!(1, n[0].children().len());
-        assert_eq!("", n[0].children().next().unwrap().title());
+        assert_eq!(1, n[0].child().len());
+        assert_eq!("", n[0].child().next().unwrap().title());
     }
 
     #[test]

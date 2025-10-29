@@ -92,7 +92,7 @@ impl MobiNav {
         self.id
     }
 
-    pub fn children(&self) -> std::slice::Iter<MobiNav> {
+    pub fn child(&self) -> std::slice::Iter<MobiNav> {
         self.children.iter()
     }
 
