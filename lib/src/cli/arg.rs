@@ -14,7 +14,7 @@
 //! 子命令及其参数可以有多个，将会同时执行
 //!
 
-use std::{fmt::Display, isize};
+use std::{fmt::Display, isize, str::FromStr};
 
 macro_rules! parse_err {
     ($($arg:tt)*) => {{
@@ -404,12 +404,50 @@ fn check_command_opt(arg: &Arg, command_option_def: &[CommandOptionDef]) {
             .collect();
         if !c.is_empty() {
             for def in &ele.opts {
-                if def.required
-                    && !c[0].opts.iter().any(|f| f.key == def.key) {
-                        parse_err!("sub command {} need arg -{}", ele.command, def.key)
-                    }
+                if def.required && !c[0].opts.iter().any(|f| f.key == def.key) {
+                    parse_err!("sub command {} need arg -{}", ele.command, def.key)
+                }
             }
         }
+    }
+}
+
+pub(crate) trait OptUtil {
+    /// 是否有指定参数
+    fn has_opt<T: AsRef<str>>(&self, opt: T) -> bool;
+
+    /// 获取多个值
+    fn get_values<T: AsRef<str>>(&self, opt: T) -> Option<Vec<String>>;
+
+    /// 获取单个值
+    fn get_value<T: AsRef<str>, V: FromStr>(&self, opt: T) -> Option<V>;
+
+    /// 获取单个值
+    fn get_value_or_default<T: AsRef<str>, V: FromStr>(&self, opt: T, default: V) -> V;
+}
+
+impl OptUtil for &[ArgOption] {
+    fn has_opt<T: AsRef<str>>(&self, opt: T) -> bool {
+        self.iter()
+            .find(|s| s.key == opt.as_ref())
+            .is_some_and(|_| true)
+    }
+
+    fn get_values<T: AsRef<str>>(&self, opt: T) -> Option<Vec<String>> {
+        self.iter()
+            .find(|f| f.key == opt.as_ref())
+            .and_then(|f| f.values.clone())
+    }
+
+    fn get_value<T: AsRef<str>, V: FromStr>(&self, opt: T) -> Option<V> {
+        self.iter()
+            .find(|f| f.key == opt.as_ref())
+            .and_then(|f| f.value.clone())
+            .and_then(|f| f.parse::<V>().ok())
+    }
+
+    fn get_value_or_default<T: AsRef<str>, V: FromStr>(&self, opt: T, default: V) -> V {
+        self.get_value(opt).unwrap_or(default)
     }
 }
 

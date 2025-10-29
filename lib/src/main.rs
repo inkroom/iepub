@@ -59,7 +59,7 @@ mod commands {
     }
     pub(crate) mod mobi {
         use crate::cli::command::mobi::*;
-        register_command!(BookInfoGetter, GetImage, GetCover, Unpack, FormatConvert);
+        register_command!(BookInfoGetter, GetImage, GetCover, Unpack, FormatConvert,NavScanner, GetChapter);
     }
 }
 
