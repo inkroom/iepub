@@ -63,13 +63,13 @@ jobs:
           for i in {1..4}; do
             echo "第 $i 次测试"
             echo "::group::all 第 $i 次测试"
-            cargo test --workspace --all-features -- --exact --show-output && break
+            cargo test --workspace --all-features -- --exact --show-output && echo "::endgroup::" && break
             echo "::endgroup::"
             sleep 5
           done
           for i in {1..4}; do
             echo "::group::第 $i 次测试"
-            cargo test --workspace -- --exact --show-output && break
+            cargo test --workspace -- --exact --show-output && echo "::endgroup::" && break
             echo "::endgroup::"
             sleep 5
           done
