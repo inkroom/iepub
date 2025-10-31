@@ -92,7 +92,7 @@ impl MobiNav {
         self.id
     }
 
-    pub fn child(&self) -> std::slice::Iter<MobiNav> {
+    pub fn child(&self) -> std::slice::Iter<'_, MobiNav> {
         self.children.iter()
     }
 
@@ -244,11 +244,11 @@ impl MobiBook {
     pub fn cover_mut(&mut self) -> Option<&mut MobiAssets> {
         self.cover.as_mut()
     }
-    pub fn assets_mut(&mut self) -> std::slice::IterMut<MobiAssets> {
+    pub fn assets_mut(&mut self) -> std::slice::IterMut<'_, MobiAssets> {
         self.images.iter_mut()
     }
 
-    pub fn assets(&self) -> std::slice::Iter<MobiAssets> {
+    pub fn assets(&self) -> std::slice::Iter<'_, MobiAssets> {
         self.images.iter()
     }
 
@@ -256,7 +256,7 @@ impl MobiBook {
         self.images.push(asset)
     }
 
-    pub fn chapters_mut(&mut self) -> std::slice::IterMut<MobiHtml> {
+    pub fn chapters_mut(&mut self) -> std::slice::IterMut<'_, MobiHtml> {
         self.chapters.iter_mut()
     }
 
@@ -268,7 +268,7 @@ impl MobiBook {
         self.chapters.iter_mut().find(|s| s.nav_id() == nav_id)
     }
 
-    pub fn chapters(&self) -> std::slice::Iter<MobiHtml> {
+    pub fn chapters(&self) -> std::slice::Iter<'_, MobiHtml> {
         self.chapters.iter()
     }
 
@@ -276,7 +276,7 @@ impl MobiBook {
         self.chapters.push(chap);
     }
 
-    pub fn nav(&self) -> std::slice::Iter<MobiNav> {
+    pub fn nav(&self) -> std::slice::Iter<'_, MobiNav> {
         self.nav.iter()
     }
 
