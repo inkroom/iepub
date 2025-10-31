@@ -306,7 +306,7 @@ impl EpubBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::EpubHtml;
+    use crate::prelude::{EpubHtml, EpubLink, LinkRel};
 
     use super::EpubBuilder;
 
@@ -338,6 +338,11 @@ mod tests {
                 EpubHtml::default()
                     .with_file_name("0.xml")
                     .with_title("第一章")
+                    .with_link(vec![EpubLink {
+                        rel: LinkRel::CSS,
+                        file_type: String::new(),
+                        href: "./1.css".to_string(),
+                    }])
                     .with_data("<p>锻炼</p>".to_string().as_bytes().to_vec()),
             )
             .add_chapter(

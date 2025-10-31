@@ -9,13 +9,20 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool, dir: &Option<Dire
     let mut css = String::new();
     if let Some(links) = chap.links() {
         for ele in links {
-            css.push_str(
-                format!(
-                    "<link href=\"{}\" rel=\"stylesheet\" type=\"text/css\"/>",
-                    ele.href
-                )
-                .as_str(),
-            );
+            match &ele.rel {
+                LinkRel::CSS => {
+                    css.push_str(
+                        format!(
+                            "<link href=\"{}\" rel=\"stylesheet\" type=\"text/css\"/>",
+                            ele.href
+                        )
+                        .as_str(),
+                    );
+                }
+                LinkRel::OTHER(h) => {
+                    css.push_str(format!("<link href=\"{}\" rel=\"{h}\"/>", ele.href).as_str());
+                }
+            }
         }
     }
 
@@ -370,6 +377,7 @@ pub(crate) struct HtmlInfo {
     pub(crate) content: Vec<u8>,
     pub(crate) language: Option<String>,
     pub(crate) direction: Option<Direction>,
+    pub(crate) link: Vec<EpubLink>,
 }
 
 ///
@@ -381,8 +389,12 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
     let mut direction = None;
     let mut title = String::new();
     let mut content = Vec::new();
+    let mut link = Vec::new();
+
     let mut reader = Reader::from_str(html);
     reader.config_mut().trim_text(false);
+    reader.config_mut().expand_empty_elements = true;
+    reader.config_mut().check_end_names = false;
     let mut buf = Vec::new();
     let mut parent: Vec<&str> = Vec::new();
     let mut body_data: Option<Vec<u8>> = None;
@@ -428,6 +440,36 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                         return Err(IError::Unknown);
                     }
                     parent.push("head");
+                }
+                b"link" => {
+                    if parent.last().map(|f| f == &"head").unwrap_or(false) {
+                        // 读取link标签
+                        if let Ok(href) = body.try_get_attribute("href") {
+                            if let Some(h) = href.map(|f| {
+                                f.unescape_value()
+                                    .map_or_else(|_| String::new(), |v| v.to_string())
+                            }) {
+                                let mut rel = LinkRel::CSS;
+
+                                if let Ok(href) = body.try_get_attribute("rel") {
+                                    if let Some(h) = href.map(|m| {
+                                        m.unescape_value()
+                                            .map_or_else(|_| String::new(), |v| v.to_string())
+                                    }) {
+                                        if h != "stylesheet" {
+                                            rel = LinkRel::OTHER(h);
+                                        }
+                                    }
+                                }
+
+                                link.push(EpubLink {
+                                    rel,
+                                    file_type: String::new(),
+                                    href: h,
+                                });
+                            }
+                        }
+                    }
                 }
                 b"title" => {
                     if parent.len() == 2 && parent[0] == "html" && parent[1] == "head" {
@@ -509,6 +551,7 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
         content,
         language: lang,
         direction,
+        link,
     })
 }
 
@@ -662,6 +705,28 @@ ok
   </body>
 </html>"###
         );
+
+        // 测试link
+        t.add_link(EpubLink { rel: LinkRel::OTHER("t".to_string()), file_type: "()".to_string(), href: "1.css".to_string() });
+        let html = to_html(&mut t, true, &Some(Direction::RTL));
+
+        assert_eq!(
+            html,
+            r###"<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="zh" xml:lang="zh" dir="ltr">
+  <head>
+    <title>title</title>
+<link href="href" rel="stylesheet" type="text/css"/><link href="1.css" rel="t"/>
+<style type="text/css">#id{width:10%}</style>
+</head>
+  <body>
+    <h1 style="text-align: center">title</h1>
+ok
+  </body>
+</html>"###
+        );
+
     }
 
     #[test]
@@ -1023,6 +1088,29 @@ ok
         assert_eq!(
             r#"Test Title `~!@#$%^&*()_+ and []\{}| and2 ;':" and3 ,./<>?"#,
             info.title
+        );
+
+        // 测试 css link
+
+        let info= get_html_info(
+            r#"<html xml:lang="en" lang="zh" dir="cis">
+    <head><title> Test Title `~!@#$%^&amp;*()_+ and []\{}| and2 ;&apos;:&quot; and3 ,./&lt;&gt;? </title><link rel="preconnect" href="https://avatars.githubusercontent.com"> 
+    <link crossorigin="anonymous" media="all" rel="stylesheet" href="https://github.githubassets.com/assets/code-9c9b8dc61e74.css" /></head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(2, info.link.len());
+        assert_eq!(LinkRel::OTHER("preconnect".to_string()), info.link[0].rel);
+        assert_eq!(LinkRel::CSS, info.link[1].rel);
+
+        assert_eq!(
+            "https://github.githubassets.com/assets/code-9c9b8dc61e74.css",
+            info.link[1].href
         );
     }
 }

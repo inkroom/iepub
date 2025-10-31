@@ -209,6 +209,7 @@ impl EpubHtml {
                             content,
                             language,
                             direction,
+                            link,
                         }) = get_html_info(v.as_str(), id)
                         {
                             if !title.is_empty() {
@@ -219,6 +220,9 @@ impl EpubHtml {
                                 self.set_language(lang);
                             }
                             self.direction = direction;
+                            if !link.is_empty() {
+                                self.links = Some(link);
+                            }
                         }
                         break;
                     }
@@ -310,7 +314,7 @@ impl EpubHtml {
         self
     }
 
-    pub fn links(&self) -> Option<std::slice::Iter<EpubLink>> {
+    pub fn links(&self) -> Option<std::slice::Iter<'_, EpubLink>> {
         self.links.as_ref().map(|f| f.iter())
     }
 
@@ -320,6 +324,11 @@ impl EpubHtml {
         } else {
             self.links = Some(vec![link]);
         }
+    }
+
+    pub fn with_link(mut self, link: Vec<EpubLink>) -> Self {
+        self.links = Some(link);
+        self
     }
 
     fn get_links(&mut self) -> Option<&mut Vec<EpubLink>> {
@@ -495,7 +504,7 @@ impl EpubNav {
         self.child.push(child);
     }
 
-    pub fn child(&self) -> std::slice::Iter<EpubNav> {
+    pub fn child(&self) -> std::slice::Iter<'_, EpubNav> {
         self.child.iter()
     }
 }
@@ -727,11 +736,11 @@ impl EpubBook {
             .find(|s| s.file_name() == file_name.as_ref())
     }
 
-    pub fn assets(&self) -> std::slice::Iter<EpubAssets> {
+    pub fn assets(&self) -> std::slice::Iter<'_, EpubAssets> {
         self.assets.iter()
     }
 
-    pub fn assets_mut(&mut self) -> std::slice::IterMut<EpubAssets> {
+    pub fn assets_mut(&mut self) -> std::slice::IterMut<'_, EpubAssets> {
         self.assets.iter_mut()
     }
 
@@ -742,11 +751,11 @@ impl EpubBook {
         self.chapters.push(chap);
     }
 
-    pub fn chapters_mut(&mut self) -> std::slice::IterMut<EpubHtml> {
+    pub fn chapters_mut(&mut self) -> std::slice::IterMut<'_, EpubHtml> {
         self.chapters.iter_mut()
     }
 
-    pub fn chapters(&self) -> std::slice::Iter<EpubHtml> {
+    pub fn chapters(&self) -> std::slice::Iter<'_, EpubHtml> {
         self.chapters.iter()
     }
 
@@ -782,7 +791,7 @@ impl EpubBook {
     }
 
     /// 获取目录
-    pub fn nav(&self) -> std::slice::Iter<EpubNav> {
+    pub fn nav(&self) -> std::slice::Iter<'_, EpubNav> {
         self.nav.iter()
     }
 

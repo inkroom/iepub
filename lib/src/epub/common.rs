@@ -1,7 +1,8 @@
 crate::cache_enum! {
+    #[derive(PartialEq)]
     pub enum LinkRel {
         CSS,
-        OTHER,
+        OTHER(String),
     }
 }
 
@@ -21,8 +22,8 @@ impl std::fmt::Display for LinkRel {
                 Self::CSS => {
                     "stylesheet"
                 }
-                Self::OTHER => {
-                    "other"
+                Self::OTHER(h) => {
+                    &h
                 }
             }
         )
