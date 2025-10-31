@@ -1,3 +1,1 @@
-- 命令行修复-v 1 -v 2 只接收到一个参数问题；现在可以-v 1 2和-v 1 -v 2都支持
-- 命令行mobi 支持get-chapter和nav子命令
-- 修改mobi方法签名，尽量和epub相同
+- epub读取可以读取章节的css link了

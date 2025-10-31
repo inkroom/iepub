@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 rust-version = "1.84.0"
-version = "1.2.3"
+version = "1.2.4"
 edition = "2021"
 license = "MIT"
 description = "epub、mobi电子书读写"
