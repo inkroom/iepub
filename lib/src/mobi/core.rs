@@ -255,6 +255,10 @@ impl MobiBook {
     pub fn add_assets(&mut self, asset: MobiAssets) {
         self.images.push(asset)
     }
+    
+    pub fn remove_assets(&mut self,index: usize){
+        self.images.remove(index);
+    }
 
     pub fn chapters_mut(&mut self) -> std::slice::IterMut<'_, MobiHtml> {
         self.chapters.iter_mut()
@@ -274,6 +278,10 @@ impl MobiBook {
 
     pub fn add_chapter(&mut self, chap: MobiHtml) {
         self.chapters.push(chap);
+    }
+
+    pub fn remove_chapter(&mut self, index: usize){
+        self.chapters.remove(index);
     }
 
     pub fn nav(&self) -> std::slice::Iter<'_, MobiNav> {

@@ -25,6 +25,17 @@ fn get_single_input(message: &str) -> Result<String, IError> {
     handle.read_line(&mut buffer)?;
     Ok(buffer.trim().to_string())
 }
+
+/// 是否输出文件
+fn out_file(global_opts: &[arg::ArgOption], opts: &[arg::ArgOption], path: &str) -> bool {
+    !std::path::Path::new(path).exists()
+        || is_overiade(global_opts, opts)
+        || get_single_input("Override file？(y/n)")
+            .unwrap()
+            .to_lowercase()
+            == "y"
+}
+
 /// 创建一个命令，定死了代码基本结构
 macro_rules! create_command {
     // create_command!(结构体名称, "命令名称",{ arg::CommandOptionDef{} }, exec函数, 额外的成员函数 ),如果没有额外的成员函数，最后也需要以逗号结尾，所以最后部分代码应该是: ,);
@@ -103,15 +114,19 @@ fn read_book(file: &str) -> IResult<OwnBook> {
 }
 
 pub(crate) mod epub {
+    use std::vec;
+
     use crate::cli::arg::OptUtil;
     use crate::cli::command::get_single_input;
     use crate::cli::command::is_overiade;
+    use crate::cli::command::out_file;
     use crate::cli::command::write_file;
     use crate::exec_err;
     use crate::Book;
     use iepub::prelude::adapter::add_into_epub;
     use iepub::prelude::adapter::epub_to_mobi;
     use iepub::prelude::appender::write_metadata;
+    use iepub::prelude::EpubWriter;
 
     use iepub::prelude::EpubBuilder;
     use iepub::prelude::EpubNav;
@@ -226,7 +241,7 @@ pub(crate) mod epub {
                     }
                 }
 
-                if let Some(bs) = opts.get_values("child") {
+                if let Some(bs) = opts.get_values::<_, String>("child") {
                     let skip = opts.get_value_or_default("skip", 0);
 
                     let (mut builder, mut len, mut assets_len) =
@@ -756,14 +771,130 @@ pub(crate) mod epub {
             }
         }
     );
+
+    create_command!(
+        Replace,
+        "replace",
+        {
+            arg::CommandOptionDef {
+                command: "replace".to_string(),
+                support_args: 0,
+                desc: "替换文本内容，注意可能会产生意料之外的结果".to_string(),
+                opts: vec![
+                    OptionDef::create(
+                        "c",
+                        "文件路径，可以从nav命令中获取,没有则替换所有章节",
+                        OptionType::Array,
+                        false,
+                    ),
+                    OptionDef::create("s", "原内容", OptionType::String, true),
+                    OptionDef::create("r", "新内容", OptionType::String, true),
+                    OptionDef::create("out", "输出文件位置", OptionType::String, true),
+                    OptionDef::over(),
+                ],
+            }
+        },
+        fn exec(
+            &self,
+            book: &mut Book,
+            global_opts: &[ArgOption],
+            opts: &[ArgOption],
+            _args: &[String],
+        ) {
+            let paths = opts
+                .get_values("id")
+                .filter(|f| !f.is_empty())
+                .unwrap_or_else(|| self.get_all_path(book));
+
+            let origin: String = opts.get_value("s").unwrap();
+            let rep: String = opts.get_value("r").unwrap();
+
+            if let Book::EPUB(book) = book {
+                for chap in book.chapters_mut() {
+                    if paths.iter().any(|f| f == chap.file_name()) {
+                        // 需要替换
+                        msg!("replacing {}", chap.file_name());
+                        chap.data_mut()
+                            .and_then(|f| String::from_utf8(f.to_vec()).ok())
+                            .map(|f| f.replace(origin.as_str(), rep.as_str()))
+                            .inspect(|f| {
+                                chap.set_data(f.as_bytes().to_vec());
+                            });
+                    }
+                }
+                // 移除旧的nav.xhtml，否则会重复写入
+                if let Some((index, _)) = book
+                    .chapters()
+                    .enumerate()
+                    .find(|f| f.1.file_name() == "nav.xhtml")
+                {
+                    book.remove_chapter(index);
+                }
+
+                for ele in book
+                    .assets()
+                    .enumerate()
+                    .filter(|f| {
+                        f.1.file_name() == "toc.ncx"
+                            || f.1.file_name() == "cover.jpg"
+                            || f.1.file_name() == "cover.xhtml"
+                    })
+                    .map(|f| f.0)
+                    .rev()
+                    .collect::<Vec<usize>>()
+                {
+                    book.remove_assets(ele);
+                }
+
+                let out: String = opts.get_value("out").unwrap();
+                if out_file(global_opts, opts, out.as_str()) {
+                    if let Err(e) = EpubWriter::write_to_file(out, book, false) {
+                        println!(
+                            "{:?}",
+                            book.assets()
+                                .map(|f| f.file_name().to_string())
+                                .collect::<Vec<String>>()
+                        );
+
+                        exec_err!("写入文件错误 {:?}", e);
+                    };
+                }
+            }
+        },
+        fn get_all_path(&self, book: &mut Book) -> Vec<String> {
+            if let Book::EPUB(book) = book {
+                #[inline]
+                fn get_file_name(nav: &[EpubNav]) -> Vec<String> {
+                    let mut v = Vec::new();
+                    for ele in nav {
+                        v.push(ele.file_name().to_string());
+                        let ch = ele.child();
+                        if ch.len() > 0 {
+                            v.append(&mut get_file_name(ch.as_slice()));
+                        }
+                    }
+                    v
+                }
+
+                return get_file_name(book.nav().as_slice());
+            }
+            Vec::new()
+        }
+    );
 }
 
 pub(crate) mod mobi {
 
-    use iepub::prelude::{adapter::mobi_to_epub, EpubWriter, MobiNav};
+    use iepub::prelude::{
+        adapter::mobi_to_epub,
+        EpubWriter, MobiNav, MobiWriter,
+    };
 
     use crate::{
-        cli::arg::{self, ArgOption, OptUtil, OptionDef, OptionType},
+        cli::{
+            arg::{self, ArgOption, OptUtil, OptionDef, OptionType},
+            command::out_file,
+        },
         exec_err, msg, Book, Command,
     };
 
@@ -1240,6 +1371,93 @@ pub(crate) mod mobi {
                 r#"<html><head><title>{}</title></head><body>{}</body></html>"#,
                 title, data
             )
+        }
+    );
+    create_command!(
+        Replace,
+        "replace",
+        {
+            arg::CommandOptionDef {
+                command: "replace".to_string(),
+                support_args: 0,
+                desc: "替换文本内容，注意可能会产生意料之外的结果".to_string(),
+                opts: vec![
+                    OptionDef::create(
+                        "id",
+                        "文件id，可以从nav命令中获取,没有则替换所有章节",
+                        OptionType::Array,
+                        false,
+                    ),
+                    OptionDef::create("s", "原内容", OptionType::String, true),
+                    OptionDef::create("r", "新内容", OptionType::String, true),
+                    OptionDef::create("out", "输出文件位置", OptionType::String, true),
+                    OptionDef::over(),
+                ],
+            }
+        },
+        fn exec(
+            &self,
+            book: &mut Book,
+            global_opts: &[ArgOption],
+            opts: &[ArgOption],
+            _args: &[String],
+        ) {
+            let paths = opts
+                .get_values::<_, usize>("id")
+                .filter(|f| !f.is_empty())
+                .unwrap_or_else(|| self.get_all_id(book));
+
+            let origin: String = opts.get_value("s").unwrap();
+            let rep: String = opts.get_value("r").unwrap();
+
+            if let Book::MOBI(book) = book {
+                for chap in book.chapters_mut() {
+                    if paths.iter().any(|f| *f == chap.nav_id()) {
+                        // 需要替换
+                        msg!("replacing {}", chap.title());
+                        chap.data()
+                            .and_then(|f| String::from_utf8(f.to_vec()).ok())
+                            .map(|f| f.replace(origin.as_str(), rep.as_str()))
+                            .inspect(|f| {
+                                chap.set_data(f.as_bytes().to_vec());
+                            });
+                    }
+                }
+
+                let out: String = opts.get_value("out").unwrap();
+
+                if out_file(global_opts, opts, out.as_str()) {
+                    if let Err(e) = MobiWriter::write_to_file(out, book, false) {
+                        println!(
+                            "{:?}",
+                            book.assets()
+                                .map(|f| f.file_name().to_string())
+                                .collect::<Vec<String>>()
+                        );
+
+                        exec_err!("写入文件错误 {:?}", e);
+                    };
+                }
+            }
+        },
+        fn get_all_id(&self, book: &mut Book) -> Vec<usize> {
+            if let Book::MOBI(book) = book {
+                #[inline]
+                fn get_file_name(nav: &[MobiNav]) -> Vec<usize> {
+                    let mut v = Vec::new();
+                    for ele in nav {
+                        v.push(ele.id());
+                        let ch = ele.child();
+                        if ch.len() > 0 {
+                            v.append(&mut get_file_name(ch.as_slice()));
+                        }
+                    }
+                    v
+                }
+
+                return get_file_name(book.nav().as_slice());
+            }
+            Vec::new()
         }
     );
 }

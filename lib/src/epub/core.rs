@@ -744,6 +744,10 @@ impl EpubBook {
         self.assets.iter_mut()
     }
 
+    pub fn remove_assets(&mut self,index: usize){
+        self.assets.remove(index);
+    }
+
     pub fn add_chapter(&mut self, mut chap: EpubHtml) {
         if let Some(r) = &self.reader {
             chap.reader = Some(Arc::clone(r));
@@ -757,6 +761,10 @@ impl EpubBook {
 
     pub fn chapters(&self) -> std::slice::Iter<'_, EpubHtml> {
         self.chapters.iter()
+    }
+
+    pub fn remove_chapter(&mut self, index: usize){
+        self.chapters.remove(index);
     }
 
     ///

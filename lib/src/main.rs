@@ -54,7 +54,8 @@ mod commands {
             GetImage,
             GetChapter,
             FormatConvert,
-            Concat
+            Concat,
+            Replace
         );
     }
     pub(crate) mod mobi {
@@ -66,7 +67,8 @@ mod commands {
             Unpack,
             FormatConvert,
             NavScanner,
-            GetChapter
+            GetChapter,
+            Replace
         );
     }
 }

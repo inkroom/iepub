@@ -16,6 +16,8 @@
 
 use std::{fmt::Display, isize, str::FromStr};
 
+use crate::exec_err;
+
 macro_rules! parse_err {
     ($($arg:tt)*) => {{
         #[cfg(not(test))]
@@ -420,7 +422,7 @@ pub(crate) trait OptUtil {
     fn has_opt<T: AsRef<str>>(&self, opt: T) -> bool;
 
     /// 获取多个值
-    fn get_values<T: AsRef<str>>(&self, opt: T) -> Option<Vec<String>>;
+    fn get_values<T: AsRef<str>, V: FromStr>(&self, opt: T) -> Option<Vec<V>>;
 
     /// 获取单个值
     fn get_value<T: AsRef<str>, V: FromStr>(&self, opt: T) -> Option<V>;
@@ -436,10 +438,18 @@ impl OptUtil for &[ArgOption] {
             .is_some_and(|_| true)
     }
 
-    fn get_values<T: AsRef<str>>(&self, opt: T) -> Option<Vec<String>> {
+    fn get_values<T: AsRef<str>, V: FromStr>(&self, opt: T) -> Option<Vec<V>> {
         self.iter()
             .find(|f| f.key == opt.as_ref())
             .and_then(|f| f.values.clone())
+            .map(|f| {
+                f.iter()
+                    .map(|v| {
+                        V::from_str(v.as_str())
+                            .unwrap_or_else(|_e| exec_err!("{v} type is not support"))
+                    })
+                    .collect::<Vec<V>>()
+            })
     }
 
     fn get_value<T: AsRef<str>, V: FromStr>(&self, opt: T) -> Option<V> {
@@ -679,7 +689,7 @@ mod tests {
             .map(|f| f.opts.as_slice())
             .unwrap();
 
-        let s = v.get_values("all").unwrap();
+        let s: Vec<String> = v.get_values("all").unwrap();
         assert_eq!(2, s.len());
         assert_eq!("43", s[0]);
         assert_eq!("48", s[1]);
@@ -709,7 +719,7 @@ mod tests {
             .map(|f| f.opts.as_slice())
             .unwrap();
 
-        let s = v.get_values("all").unwrap();
+        let s: Vec<String> = v.get_values("all").unwrap();
         assert_eq!(2, s.len());
         assert_eq!("43", s[0]);
         assert_eq!("48", s[1]);
