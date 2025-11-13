@@ -784,7 +784,7 @@ impl<T: Write + Seek> MobiWriter<T> {
             book,
             text_length,
             last_text_record_idx,
-            first_non_text_record_idx,
+            first_non_text_record_idx - 1,
         )?;
 
         record_info_list[0].offset = start as u32;
