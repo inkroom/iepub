@@ -125,6 +125,7 @@ pub(crate) mod epub {
     use crate::Book;
     use iepub::prelude::adapter::add_into_epub;
     use iepub::prelude::adapter::epub_to_mobi;
+    use iepub::prelude::adapter::mobi_to_epub;
     use iepub::prelude::appender::write_metadata;
     use iepub::prelude::EpubWriter;
 
@@ -155,6 +156,7 @@ pub(crate) mod epub {
                         OptionType::Array,
                         true,
                     ),
+                    OptionDef::create("n", "不添加标题，默认添加", OptionType::NoParamter, false),
                     OptionDef::create("out", "输出文件位置", OptionType::String, true),
                     OptionDef::create("skip", "跳过指定目录数", OptionType::String, false),
                     OptionDef::create("cover", "封面图片", OptionType::String, false),
@@ -182,6 +184,7 @@ pub(crate) mod epub {
             opts: &[ArgOption],
             _args: &[String],
         ) {
+              let append_title = !opts.has_opt("n");
             if let Book::EPUB(book) = book {
                 let mut builder = EpubBuilder::new()
                     .with_title(book.title())
@@ -249,30 +252,29 @@ pub(crate) mod epub {
 
                     for ele in bs {
                         let f = read_book(ele.as_str()).unwrap();
-                        match f {
-                            OwnBook::EPUB(mut epub_book) => {
-                                let v =
-                                    add_into_epub(builder, &mut epub_book, len, assets_len, skip)
-                                        .unwrap();
-                                builder = v.0;
-                                len = v.1;
-                                assets_len = v.2;
-                            }
-                            OwnBook::MOBI(mobi_book) => todo!(),
-                        }
+                        let mut epub_book = match f {
+                            OwnBook::EPUB(epub_book) => epub_book,
+                            OwnBook::MOBI(mut mobi_book) => mobi_to_epub(&mut mobi_book)
+                                .unwrap_or_else(|e| {
+                                    exec_err!(
+                                        "convert mobi {} to epub fail, reason: {:?}",
+                                        ele.as_str(),
+                                        e
+                                    )
+                                }),
+                        };
+
+                        let v =
+                            add_into_epub(builder, &mut epub_book, len, assets_len, skip).unwrap();
+                        builder = v.0;
+                        len = v.1;
+                        assets_len = v.2;
                     }
-                    if let Some(path) = opts.get_value("out") {
-                        if std::path::Path::new::<String>(&path).exists()
-                            && !is_overiade(global_opts, opts)
-                            && get_single_input("Override file？(y/n)")
-                                .unwrap()
-                                .to_lowercase()
-                                != "y"
-                        {
-                            return;
+                    if let Some(path) = opts.get_value::<_, String>("out") {
+                        if out_file(global_opts, opts, &path) {
+                            msg!("writing book to {}", path);
+                            builder.append_title(append_title).file(path.as_str()).unwrap();
                         }
-                        msg!("writing book to {}", path);
-                        builder.file(path.as_str()).unwrap();
                     }
                 }
             }
@@ -885,10 +887,7 @@ pub(crate) mod epub {
 
 pub(crate) mod mobi {
 
-    use iepub::prelude::{
-        adapter::mobi_to_epub,
-        EpubWriter, MobiNav, MobiWriter,
-    };
+    use iepub::prelude::{adapter::mobi_to_epub, EpubWriter, MobiNav, MobiWriter};
 
     use crate::{
         cli::{
