@@ -522,9 +522,72 @@ fn hex_char_to_value(c: char) -> IResult<u8> {
     }
 }
 
+/// 提取css中引用的外部url，目前只支持url
+/// ```css
+/// @import "reset.css";
+/// @import url('fonts.css');
+/// @import url("https://fonts.googleapis.com/css");
+///            
+/// body {
+///    background: url(../images/bg.jpg);
+///    font-family: Arial;
+/// }
+/// ```
+pub(crate) fn get_css_content_url<'a, T: AsRef<str> + ?Sized>(css: &'a T) -> Vec<&'a str> {
+    let mut res = Vec::new();
+
+    let line = css.as_ref().split("\n").collect::<Vec<&str>>();
+
+    for ele in line {
+        let mut index = 0;
+        let byte = ele.as_bytes();
+        let count = byte.len();
+        loop {
+            if index + 4 >= count {
+                break;
+            }
+            if &byte[index..(index + 4)] == b"url(" {
+                // css 支持单引号，双引号和无引号
+                let mut start = index + 4;
+                let mut end = b')';
+                if byte[start] == b'\'' {
+                    end = b'\'';
+                    start += 1;
+                    index += 1;
+                } else if byte[start] == b'"' {
+                    end = b'"';
+                    start += 1;
+                    index += 1;
+                }
+
+                loop {
+                    if start >= count {
+                        index = start;
+                        break;
+                    }
+                    let t = byte[start];
+                    if t == end {
+                        let u = &ele[(index + 4)..start];
+
+                        res.push(u);
+
+                        index = start + 1;
+                        break;
+                    }
+                    start += 1;
+                }
+            } else {
+                index += 1;
+            }
+        }
+    }
+
+    res
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::common::{DateTimeFormater, urldecode_enhanced};
+    use crate::common::{get_css_content_url, urldecode_enhanced, DateTimeFormater};
 
     pub fn get_req_mem(url: &str) -> Vec<u8> {
         get_req(url).send().unwrap().bytes().unwrap().to_vec()
@@ -634,7 +697,53 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn decode_url(){
-        assert_eq!(urldecode_enhanced("Images/c5eiR%E7%BF%BB%E8%AF%913.jpg").unwrap(),"Images/c5eiR翻译3.jpg");
+    fn decode_url() {
+        assert_eq!(
+            urldecode_enhanced("Images/c5eiR%E7%BF%BB%E8%AF%913.jpg").unwrap(),
+            "Images/c5eiR翻译3.jpg"
+        );
+    }
+
+    #[test]
+    fn test_get_css_content_url() {
+        let v = get_css_content_url(r##"background: url(../images/bg.jpg);"##);
+        assert_eq!(vec!["../images/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url("../images/bg.jpg");"##);
+        assert_eq!(vec!["../images/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url('../images/bg.jpg');"##);
+        assert_eq!(vec!["../images/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url('../images/bg.jpg);"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url('../images/bg.jpg");"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url("../images/bg.jpg');"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url('../images(/b)g.jpg');"##);
+        assert_eq!(vec!["../images(/b)g.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url('../images(/bg.jpg');"##);
+        assert_eq!(vec!["../images(/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url("../imag(es/bg.jpg');"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url('../ima中文ges(/bg.jpg');"##);
+        assert_eq!(vec!["../ima中文ges(/bg.jpg"], v);
+
+        let v = get_css_content_url(
+            r##".back {
+	background-image: url(../Images/contents.jpg);
+	background-repeat:no-repeat;
+	background-position:top center;
+	background-size:cover;
+}"##,
+        );
+        assert_eq!(vec!["../Images/contents.jpg"], v);
     }
 }
