@@ -88,6 +88,9 @@ pub enum IError {
     Encoding(quick_xml::encoding::EncodingError),
     NoNav(&'static str),
     Cover(String),
+    IncompleteEncoding,
+    InvalidHexChar(char),
+    Utf8ConversionError,
     #[cfg(feature = "cache")]
     Cache(String),
     Unknown,
@@ -102,7 +105,14 @@ impl From<serde_json::Error> for IError {
 
 impl std::fmt::Display for IError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            IError::IncompleteEncoding => write!(f, "百分比编码不完整"),
+            IError::InvalidHexChar(c) => write!(f, "无效的十六进制字符: {}", c),
+            IError::Utf8ConversionError => write!(f, "UTF-8转换失败"),
+            _ => {
+                write!(f, "{:?}", self)
+            }
+        }
     }
 }
 
@@ -467,9 +477,54 @@ pub(crate) fn get_media_type(file_name: &str) -> String {
     String::new()
 }
 
+pub fn urldecode_enhanced(input: &str) -> IResult<String> {
+    let mut result = Vec::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '%' => {
+                // 收集两个十六进制字符
+                let hex1 = chars.next().ok_or(IError::IncompleteEncoding)?;
+                let hex2 = chars.next().ok_or(IError::IncompleteEncoding)?;
+
+                let byte = decode_hex_byte(hex1, hex2)?;
+                result.push(byte);
+            }
+            '+' => {
+                result.push(b' ');
+            }
+            _ => {
+                // 直接字符，转换为UTF-8字节序列
+                let mut buf = [0; 4];
+                let encoded = ch.encode_utf8(&mut buf);
+                result.extend_from_slice(encoded.as_bytes());
+            }
+        }
+    }
+
+    // 将字节序列转换为UTF-8字符串
+    String::from_utf8(result).map_err(|_| IError::Utf8ConversionError)
+}
+
+fn decode_hex_byte(c1: char, c2: char) -> IResult<u8> {
+    let high = hex_char_to_value(c1)?;
+    let low = hex_char_to_value(c2)?;
+    Ok((high << 4) | low)
+}
+
+fn hex_char_to_value(c: char) -> IResult<u8> {
+    match c {
+        '0'..='9' => Ok(c as u8 - b'0'),
+        'a'..='f' => Ok(c as u8 - b'a' + 10),
+        'A'..='F' => Ok(c as u8 - b'A' + 10),
+        _ => Err(IError::InvalidHexChar(c)),
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::common::DateTimeFormater;
+    use crate::common::{DateTimeFormater, urldecode_enhanced};
 
     pub fn get_req_mem(url: &str) -> Vec<u8> {
         get_req(url).send().unwrap().bytes().unwrap().to_vec()
@@ -576,5 +631,10 @@ pub(crate) mod tests {
                 .with_timezone_offset(-8)
                 .default_format()
         );
+    }
+
+    #[test]
+    fn decode_url(){
+        assert_eq!(urldecode_enhanced("Images/c5eiR%E7%BF%BB%E8%AF%913.jpg").unwrap(),"Images/c5eiR翻译3.jpg");
     }
 }

@@ -64,6 +64,13 @@ macro_rules! create_command {
     };
 }
 fn write_file(path: &str, data: &[u8]) {
+    let p = std::path::Path::new(path);
+    if p.parent().map(|f| !f.exists()).unwrap_or(true) {
+        if let Some(v) = p.parent().map(|f| format!("{}", f.display())) {
+            create_dir(v.as_str());
+        }
+    }
+
     let _ = std::fs::File::options()
         .truncate(true)
         .create(true)
@@ -152,7 +159,7 @@ pub(crate) mod epub {
                 opts: vec![
                     OptionDef::create(
                         "child",
-                        "其他电子书，不必包括-i参数对应的电子书",
+                        "其他电子书，不必包括-i参数对应的电子书；可以使用*.epub语法批量添加",
                         OptionType::Array,
                         true,
                     ),
@@ -174,6 +181,13 @@ pub(crate) mod epub {
                     OptionDef::create("format", "format", OptionType::String, false),
                     OptionDef::create("subject", "subject", OptionType::String, false),
                     OptionDef::create("contributor", "contributor", OptionType::String, false),
+                    OptionDef::create(
+                        "group",
+                        "是否按书籍分卷，默认不分卷",
+                        OptionType::NoParamter,
+                        false,
+                    ),
+                    OptionDef::over(),
                 ],
             }
         },
@@ -184,7 +198,8 @@ pub(crate) mod epub {
             opts: &[ArgOption],
             _args: &[String],
         ) {
-              let append_title = !opts.has_opt("n");
+            let append_title = !opts.has_opt("n");
+            let group = !opts.has_opt("group");
             if let Book::EPUB(book) = book {
                 let mut builder = EpubBuilder::new()
                     .with_title(book.title())
@@ -236,36 +251,79 @@ pub(crate) mod epub {
                         "contributor" => builder = builder.with_contributor(v),
                         "cover" => {
                             builder = builder.cover(
-                                "image/cover.png",
+                                format!(
+                                    "image/cover.{}",
+                                    std::path::Path::new(v)
+                                        .extension()
+                                        .and_then(|f| f.to_str())
+                                        .unwrap_or("png")
+                                ),
                                 std::fs::read(v).expect("read cover error"),
                             )
                         }
                         _ => {}
                     }
                 }
+                let skip = opts.get_value_or_default("skip", 0);
 
                 if let Some(bs) = opts.get_values::<_, String>("child") {
-                    let skip = opts.get_value_or_default("skip", 0);
+                    let first_book_name =
+                        global_opts.get_value::<_, String>("i").unwrap_or_default();
+                    msg!("loading first book {}", first_book_name);
+                    let nav_title = Some(book.title().to_string());
 
-                    let (mut builder, mut len, mut assets_len) =
-                        add_into_epub(builder, book, 0, 0, skip).unwrap();
+                    let (mut builder, mut len, mut assets_len) = add_into_epub(
+                        builder,
+                        book,
+                        0,
+                        0,
+                        skip,
+                        nav_title
+                            .filter(|f| !f.is_empty())
+                            .or_else(|| {
+                                std::path::Path::new(first_book_name.as_str())
+                                    .file_name()
+                                    .map(|f| f.to_string_lossy().into_owned().replace(".epub", ""))
+                            })
+                            .filter(|_| group),
+                    )
+                    .unwrap();
 
                     for ele in bs {
+                        msg!("loading book {ele}");
+
                         let f = read_book(ele.as_str()).unwrap();
                         let mut epub_book = match f {
                             OwnBook::EPUB(epub_book) => epub_book,
-                            OwnBook::MOBI(mut mobi_book) => mobi_to_epub(&mut mobi_book)
-                                .unwrap_or_else(|e| {
+                            OwnBook::MOBI(mut mobi_book) => {
+                                msg!("converting mobi to epub, {}", ele);
+                                mobi_to_epub(&mut mobi_book).unwrap_or_else(|e| {
                                     exec_err!(
                                         "convert mobi {} to epub fail, reason: {:?}",
                                         ele.as_str(),
                                         e
                                     )
-                                }),
+                                })
+                            }
                         };
-
-                        let v =
-                            add_into_epub(builder, &mut epub_book, len, assets_len, skip).unwrap();
+                        msg!("adding book [{}]", epub_book.title());
+                        let nav_title = Some(epub_book.title().to_string());
+                        let v = add_into_epub(
+                            builder,
+                            &mut epub_book,
+                            len,
+                            assets_len,
+                            skip,
+                            nav_title
+                                .filter(|f| !f.is_empty())
+                                .or_else(|| {
+                                    std::path::Path::new(ele.as_str()).file_name().map(|f| {
+                                        f.to_string_lossy().into_owned().replace(".epub", "")
+                                    })
+                                })
+                                .filter(|_| group),
+                        )
+                        .unwrap();
                         builder = v.0;
                         len = v.1;
                         assets_len = v.2;
@@ -273,7 +331,10 @@ pub(crate) mod epub {
                     if let Some(path) = opts.get_value::<_, String>("out") {
                         if out_file(global_opts, opts, &path) {
                             msg!("writing book to {}", path);
-                            builder.append_title(append_title).file(path.as_str()).unwrap();
+                            builder
+                                .append_title(append_title)
+                                .file(path.as_str())
+                                .unwrap();
                         }
                     }
                 }
@@ -374,19 +435,12 @@ pub(crate) mod epub {
                 let cover = book.cover_mut().unwrap_or_else(|| {
                     exec_err!("电子书没有封面");
                 });
-                let is_over = is_overiade(global_opts, opts);
 
                 if args.is_empty() {
                     let mut path = String::new();
                     path.push_str(cover.file_name());
 
-                    if std::path::Path::new(path.as_str()).exists()
-                        && !is_over
-                        && get_single_input("Override file？(y/n)")
-                            .unwrap()
-                            .to_lowercase()
-                            != "y"
-                    {
+                    if !out_file(global_opts, opts, path.as_str()) {
                         return;
                     }
                     msg!("writing cover to {}", path);
@@ -396,13 +450,7 @@ pub(crate) mod epub {
                 }
 
                 for path in args {
-                    if std::path::Path::new(&path).exists()
-                        && !is_over
-                        && get_single_input("Override file？(y/n)")
-                            .unwrap()
-                            .to_lowercase()
-                            != "y"
-                    {
+                    if out_file(global_opts, opts, path.as_str()) {
                         continue;
                     }
                     msg!("writing cover to {}", path);
@@ -484,7 +532,6 @@ pub(crate) mod epub {
         ) {
             if let Book::EPUB(book) = book {
                 let dir_o: Option<String> = opts.get_value("d");
-                let is_over = is_overiade(global_opts, opts);
 
                 let prefix = opts
                     .iter()
@@ -511,28 +558,10 @@ pub(crate) mod epub {
                                 );
                                 file_size += 1;
                             }
-                            let n_dir = &file[0..file.rfind('/').unwrap_or(0)];
-                            if !std::path::Path::new(n_dir).exists() {
-                                msg!("creating dir {}", n_dir);
-                                // 创建目录
-                                match std::fs::create_dir_all(n_dir) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        eprintln!("create dir {} fail, because {}", n_dir, e);
-                                        continue;
-                                    }
-                                };
-                            }
 
                             // 判断文件是否存在
 
-                            if std::path::Path::new(&file).exists()
-                                && !is_over
-                                && get_single_input("Override file？(y/n)")
-                                    .unwrap()
-                                    .to_lowercase()
-                                    != "y"
-                            {
+                            if !out_file(global_opts, opts, file.as_str()) {
                                 continue;
                             }
                             msg!("writing file to {}", file);

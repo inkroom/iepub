@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use super::common::{self};
 use super::html::{get_html_info, to_html};
 use crate::cache_struct;
-use crate::common::{escape_xml, IError, IResult};
+use crate::common::{escape_xml, urldecode_enhanced, IError, IResult};
 use crate::epub::common::LinkRel;
 use crate::epub::html;
 crate::cache_enum! {
@@ -380,6 +380,15 @@ impl EpubAssets {
                         self.set_data(v);
                         break;
                     }
+                    // 有的文件名被url编码了，所以这里加一个解码后的读取
+                    if let Ok(fname) = urldecode_enhanced(self._file_name.as_str()) {
+                        f = format!("{prefix}{}", fname);
+                        let d = s.lock().unwrap().read_file(f.as_str());
+                        if let Ok(v) = d {
+                            self.set_data(v);
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -744,7 +753,7 @@ impl EpubBook {
         self.assets.iter_mut()
     }
 
-    pub fn remove_assets(&mut self,index: usize){
+    pub fn remove_assets(&mut self, index: usize) {
         self.assets.remove(index);
     }
 
@@ -763,7 +772,7 @@ impl EpubBook {
         self.chapters.iter()
     }
 
-    pub fn remove_chapter(&mut self, index: usize){
+    pub fn remove_chapter(&mut self, index: usize) {
         self.chapters.remove(index);
     }
 
@@ -994,8 +1003,12 @@ mod tests {
         let mut book: EpubBook = book();
 
         // EpubWriter::write_to_file("file", &mut book).unwrap();
-
-        EpubWriter::write_to_file("12.epub", &mut book, true).unwrap();
+        let f = if std::path::Path::new("target").exists() {
+            "target/write_assets.epub"
+        } else {
+            "../target/write_assets.epub"
+        };
+        EpubWriter::write_to_file(f, &mut book, true).unwrap();
 
         // EpubWriter::<std::fs::File>write_to_file("../target/test.epub", &mut book).expect("write error");
     }

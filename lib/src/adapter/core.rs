@@ -427,6 +427,7 @@ pub mod concat {
         len: usize,
         asset_len: usize,
         skip: usize,
+        parent_nav_title: Option<String>,
     ) -> IResult<(EpubBuilder, usize, usize)> {
         let mut len = len;
         let mut asset_len = asset_len;
@@ -440,7 +441,10 @@ pub mod concat {
                 // 暂不考虑非图片资源
                 continue;
             }
-            let f = ele.data_mut().unwrap().to_vec();
+            let f = ele
+                .data_mut()
+                .map(|f| f.to_vec())
+                .expect(format!("{} not exist", ele.file_name()).as_str());
             asset_len += 1;
 
             let sufix = ele.file_name().find('.').unwrap_or(0);
@@ -451,7 +455,7 @@ pub mod concat {
         }
 
         let mut rm = HashSet::new();
-
+        let mut new_nav = Vec::new();
         // 文件名需要重新编号，所以目录也要变一下
         for (index, ele) in epub.nav().enumerate() {
             let (nav, l) = clone_epub_nav(ele, &mut new_file_name, len);
@@ -460,8 +464,24 @@ pub mod concat {
                 rm.insert(ele.file_name().to_string());
                 continue;
             }
-            builder = builder.add_nav(nav);
+            new_nav.push(nav);
         }
+        if !new_nav.is_empty() {
+            if let Some(t) = &parent_nav_title {
+                let mut v = EpubNav::default()
+                    .with_file_name(new_nav[0].file_name())
+                    .with_title(t);
+                for ele in new_nav {
+                    v.push(ele);
+                }
+                builder = builder.add_nav(v);
+            } else {
+                for ele in new_nav {
+                    builder = builder.add_nav(ele);
+                }
+            }
+        }
+
         for ele in epub.chapters_mut() {
             if rm.contains(ele.file_name()) {
                 continue;
