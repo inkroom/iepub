@@ -368,10 +368,7 @@ pub mod concat {
         if let Some(nt) = new_file_name.get(nav.file_name()) {
             new_nav.set_file_name(nt.as_str());
         } else {
-            let nt = crate::path::Path::system(nav.file_name())
-                .pop()
-                .join(format!("text/{:05}.xhtml", len).as_str())
-                .to_str();
+            let nt = format!("text/{:05}.xhtml", len);
             new_nav.set_file_name(nt.as_str());
             new_file_name.insert(nav.file_name().to_string(), nt);
             len += 1;
@@ -561,7 +558,9 @@ pub mod concat {
                         });
                     }
                 }
-
+                if let Some(css) = ele.css() {
+                    new_html.set_css(css);
+                }
                 builder = builder.add_chapter(new_html);
             } else {
                 // 按理说不应该出现不在目录里的xhtml

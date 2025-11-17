@@ -99,13 +99,28 @@ impl<T: Write + Seek> EpubWriter<T> {
     }
 
     pub fn write(&mut self, book: &mut EpubBook) -> IResult<()> {
+        self.write_cover(book)?;
+
         self.write_base(book)?;
         self.write_assets(book)?;
         self.write_chapters(book)?;
         self.write_nav(book)?;
-        self.write_cover(book)?;
 
         Ok(())
+    }
+
+    /// 生成章节页
+    fn gen_cover_chapter(&mut self, book: &mut EpubBook) {
+        if let Some(cover) = book.cover() {
+            // 生成 cover 页
+            let src = crate::path::Path::system("text").releative(cover.file_name());
+            let c = EpubHtml::default()
+                .with_file_name("text/cover.xhtml")
+                .with_title("cover")
+                .with_data(format!(r##"<img src="{src}"/>"##).as_bytes().to_vec());
+
+            book.cover_chapter = Some(c);
+        }
     }
 
     /// 写入基础的文件
@@ -189,24 +204,28 @@ impl<T: Write + Seek> EpubWriter<T> {
     /// 拷贝资源文件以及生成对应的xhtml文件
     ///
     fn write_cover(&mut self, book: &mut EpubBook) -> IResult<()> {
-        if let Some(cover) = book.cover_mut() {
+        book.cover_chapter = if let Some(cover) = book.cover_mut() {
             self.write_file(
                 format!("{}{}", common::EPUB, cover.file_name()).as_str(),
                 cover.data_mut().as_ref().unwrap(),
             )?;
 
-            let mut html = EpubHtml::default();
-            html.set_data(
-                format!("<img src=\"{}\" alt=\"Cover\"/>", cover.file_name())
-                    .as_bytes()
-                    .to_vec(),
-            );
-            html.set_title("Cover");
+            // 生成 cover 页
+            let src = cover.file_name();
+            let mut c = EpubHtml::default()
+                .with_file_name(common::COVER.replace(common::EPUB, ""))
+                .with_title("cover")
+                .with_css("html,body,div,img{width: 100%;}")
+                .with_data(format!(r##"<body><div><img src="{src}"/></div></body>"##).as_bytes().to_vec());
+
             self.write_file(
                 common::COVER,
-                to_html(&mut html, false, &book.direction).as_bytes(),
+                to_html(&mut c, false, &book.direction).as_bytes(),
             )?;
-        }
+            Some(c)
+        } else {
+            None
+        };
         Ok(())
     }
 }

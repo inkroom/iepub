@@ -144,7 +144,7 @@ epub_base_field! {
         links: Option<Vec<EpubLink>>,
         /// 章节名称
         title: String,
-        /// 自定义的css，会被添加到link下
+        /// 自定义的css
         css: Option<String>,
         /// 文件初始内容
         raw_data:Option<String>,
@@ -210,6 +210,7 @@ impl EpubHtml {
                             language,
                             direction,
                             link,
+                            style,
                         }) = get_html_info(v.as_str(), id)
                         {
                             if !title.is_empty() {
@@ -223,6 +224,7 @@ impl EpubHtml {
                             if !link.is_empty() {
                                 self.links = Some(link);
                             }
+                            self.css = style;
                         }
                         break;
                     }
@@ -581,6 +583,8 @@ pub struct EpubBook {
     assets: Vec<EpubAssets>,
     /// 章节
     chapters: Vec<EpubHtml>,
+    /// 封面页
+    pub(crate) cover_chapter: Option<EpubHtml>,
     /// 封面
     cover: Option<EpubAssets>,
     /// 版本号
@@ -653,20 +657,25 @@ impl EpubBook {
         self.info.title.clear();
         self.info.title.push_str(title.as_ref());
     }
+    
     pub fn title(&self) -> &str {
         self.info.title.as_str()
     }
+
     pub fn with_title<T: AsRef<str>>(mut self, title: T) -> Self {
         self.set_title(title.as_ref());
         self
     }
+    
     pub fn identifier(&self) -> &str {
         self.info.identifier.as_str()
     }
+
     pub fn set_identifier<T: AsRef<str>>(&mut self, identifier: T) {
         self.info.identifier.clear();
         self.info.identifier.push_str(identifier.as_ref());
     }
+
     pub fn with_identifier<T: AsRef<str>>(mut self, identifier: T) -> Self {
         self.set_identifier(identifier.as_ref());
         self
@@ -686,6 +695,7 @@ impl EpubBook {
     pub fn add_meta(&mut self, meta: EpubMetaData) {
         self.meta.push(meta);
     }
+
     pub fn meta(&self) -> &[EpubMetaData] {
         &self.meta
     }
@@ -693,6 +703,7 @@ impl EpubBook {
     pub fn get_meta_mut(&mut self, index: usize) -> Option<&mut EpubMetaData> {
         self.meta.get_mut(index)
     }
+
     pub fn get_meta(&self, index: usize) -> Option<&EpubMetaData> {
         self.meta.get(index)
     }
@@ -822,6 +833,10 @@ impl EpubBook {
 
     pub fn cover_mut(&mut self) -> Option<&mut EpubAssets> {
         self.cover.as_mut()
+    }
+
+    pub fn cover_chapter(&self)->Option<&EpubHtml>{
+        self.cover_chapter.as_ref()
     }
 
     /// 读取完成后更新文章

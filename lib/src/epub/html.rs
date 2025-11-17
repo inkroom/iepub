@@ -339,6 +339,21 @@ pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String>
             .write_empty()?;
     }
 
+    if let Some(cover) = book.cover_chapter() {
+        xml.create_element("item")
+            .with_attribute((
+                "href",
+                if cover.file_name().starts_with("/") {
+                    &cover.file_name()[1..]
+                } else {
+                    cover.file_name()
+                },
+            ))
+            .with_attribute(("id", "cover"))
+            .with_attribute(("media-type", "application/xhtml+xml"))
+            .write_empty()?;
+    }
+
     xml.write_event(Event::End(manifest.to_end()))?;
 
     let mut spine = BytesStart::new("spine");
@@ -347,7 +362,12 @@ pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String>
         spine.push_attribute(("page-progression-direction", format!("{dir}").as_str()));
     }
     xml.write_event(Event::Start(spine.borrow()))?;
-    // 把导航放第一个 nav
+    // 把封面放第一个 nav，导航第二个
+    if let Some(co) = book.cover_chapter() {
+        xml.create_element("itemref")
+            .with_attribute(("idref", "cover"))
+            .write_empty()?;
+    }
     xml.create_element("itemref")
         .with_attribute(("idref", "toc"))
         .write_empty()?;
@@ -358,6 +378,17 @@ pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String>
             .write_empty()?;
     }
     xml.write_event(Event::End(spine.to_end()))?;
+
+    if let Some(c) = book.cover_chapter() {
+        let guide = BytesStart::new("guide");
+        xml.write_event(Event::Start(guide.borrow()))?;
+        xml.create_element("reference")
+            .with_attribute(("href", c.file_name()))
+            .with_attribute(("title", c.title()))
+            .with_attribute(("type", "cover"))
+            .write_empty()?;
+        xml.write_event(Event::End(guide.to_end()))?;
+    }
 
     xml.write_event(Event::End(html.to_end()))?;
 
@@ -378,6 +409,7 @@ pub(crate) struct HtmlInfo {
     pub(crate) language: Option<String>,
     pub(crate) direction: Option<Direction>,
     pub(crate) link: Vec<EpubLink>,
+    pub(crate) style: Option<String>,
 }
 
 ///
@@ -398,6 +430,7 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
     let mut buf = Vec::new();
     let mut parent: Vec<&str> = Vec::new();
     let mut body_data: Option<Vec<u8>> = None;
+    let mut style = String::new();
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => {
@@ -440,6 +473,11 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                         return Err(IError::Unknown);
                     }
                     parent.push("head");
+                }
+                b"style" => {
+                    if parent.last().map(|f| f == &"head").unwrap_or(false) {
+                        parent.push("style");
+                    }
                 }
                 b"link" => {
                     if parent.last().map(|f| f == &"head").unwrap_or(false) {
@@ -509,11 +547,20 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                         parent.remove(parent.len() - 1);
                     }
                 }
+                b"style" => {
+                    if parent.last().map(|f| f == &"style").unwrap_or(false) {
+                        parent.remove(parent.len() - 1);
+                    }
+                }
                 _ => {}
             },
             Ok(Event::Text(e)) => {
                 if parent.len() == 3 && parent[2] == "title" {
                     title.push_str(e.decode().map_err(IError::Encoding)?.deref());
+                }
+                if parent.last().map(|f| f == &"style").unwrap_or(false) {
+                    // css 样式，应该不会有转义代码出现，就不考虑了
+                    style.push_str(e.decode().map_err(IError::Encoding)?.deref());
                 }
             }
             Ok(Event::GeneralRef(e)) => {
@@ -552,6 +599,11 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
         language: lang,
         direction,
         link,
+        style: if style.is_empty() {
+            None
+        } else {
+            Some(style.trim().to_string())
+        },
     })
 }
 
@@ -707,7 +759,11 @@ ok
         );
 
         // 测试link
-        t.add_link(EpubLink { rel: LinkRel::OTHER("t".to_string()), file_type: "()".to_string(), href: "1.css".to_string() });
+        t.add_link(EpubLink {
+            rel: LinkRel::OTHER("t".to_string()),
+            file_type: "()".to_string(),
+            href: "1.css".to_string(),
+        });
         let html = to_html(&mut t, true, &Some(Direction::RTL));
 
         assert_eq!(
@@ -726,7 +782,6 @@ ok
   </body>
 </html>"###
         );
-
     }
 
     #[test]
@@ -953,7 +1008,6 @@ ok
         epub.set_last_modify("2024-06-28T03:07:07UTC");
 
         let res = to_opf(&mut epub, "epub-rs");
-        println!("[{}]", res);
 
         let ass: &str = r###"<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><meta property="dcterms:modified">2024-06-28T03:07:07UTC</meta><dc:date id="date">2024-06-28T08:07:07UTC</dc:date><meta name="generator" content="epub-rs"/><dc:identifier id="id">identifier</dc:identifier><dc:title>中文</dc:title><dc:creator id="creator">作者</dc:creator><dc:description>description</dc:description><meta property="desc">description</meta><meta name="cover" content="cover-img"/><dc:format id="format">format</dc:format><dc:publisher id="publisher">publisher</dc:publisher><dc:subject id="subject">subject</dc:subject><dc:contributor id="contributor">contributor</dc:contributor><meta ok="ov">new</meta></metadata><manifest><item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/><item href="nav.xhtml" id="toc" media-type="application/xhtml+xml" properties="nav"/><item href="" id="cover-img" media-type="" properties="cover-image"/><item href="cover.xhtml" id="cover" media-type="application/xhtml+xml"/><item href="1.png" id="assets_0" media-type="image/png"/><item href="2.png" id="assets_1" media-type="image/png"/><item href="" id="chap_0" media-type="application/xhtml+xml"/></manifest><spine toc="ncx"><itemref idref="toc"/><itemref idref="chap_0"/></spine></package>"###;
         assert_eq!(ass, res.as_str());
@@ -962,9 +1016,19 @@ ok
         epub.set_direction(Direction::RTL);
 
         let res = to_opf(&mut epub, "epub-rs");
-        println!("[{}]", res);
 
         let ass: &str = r###"<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><meta property="dcterms:modified">2024-06-28T03:07:07UTC</meta><dc:date id="date">2024-06-28T08:07:07UTC</dc:date><meta name="generator" content="epub-rs"/><dc:identifier id="id">identifier</dc:identifier><dc:title>中文</dc:title><dc:creator id="creator">作者</dc:creator><dc:description>description</dc:description><meta property="desc">description</meta><meta name="cover" content="cover-img"/><dc:format id="format">format</dc:format><dc:publisher id="publisher">publisher</dc:publisher><dc:subject id="subject">subject</dc:subject><dc:contributor id="contributor">contributor</dc:contributor><meta ok="ov">new</meta></metadata><manifest><item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/><item href="nav.xhtml" id="toc" media-type="application/xhtml+xml" properties="nav"/><item href="" id="cover-img" media-type="" properties="cover-image"/><item href="cover.xhtml" id="cover" media-type="application/xhtml+xml"/><item href="1.png" id="assets_0" media-type="image/png"/><item href="2.png" id="assets_1" media-type="image/png"/><item href="" id="chap_0" media-type="application/xhtml+xml"/></manifest><spine toc="ncx" page-progression-direction="rtl"><itemref idref="toc"/><itemref idref="chap_0"/></spine></package>"###;
+        assert_eq!(ass, res.as_str());
+
+        // test cover xhtml
+        epub.cover_chapter = Some(
+            EpubHtml::default()
+                .with_title("封面")
+                .with_file_name("1.xhtml"),
+        );
+        let res = to_opf(&mut epub, "epub-rs");
+
+        let ass: &str = r###"<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><meta property="dcterms:modified">2024-06-28T03:07:07UTC</meta><dc:date id="date">2024-06-28T08:07:07UTC</dc:date><meta name="generator" content="epub-rs"/><dc:identifier id="id">identifier</dc:identifier><dc:title>中文</dc:title><dc:creator id="creator">作者</dc:creator><dc:description>description</dc:description><meta property="desc">description</meta><meta name="cover" content="cover-img"/><dc:format id="format">format</dc:format><dc:publisher id="publisher">publisher</dc:publisher><dc:subject id="subject">subject</dc:subject><dc:contributor id="contributor">contributor</dc:contributor><meta ok="ov">new</meta></metadata><manifest><item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/><item href="nav.xhtml" id="toc" media-type="application/xhtml+xml" properties="nav"/><item href="" id="cover-img" media-type="" properties="cover-image"/><item href="cover.xhtml" id="cover" media-type="application/xhtml+xml"/><item href="1.png" id="assets_0" media-type="image/png"/><item href="2.png" id="assets_1" media-type="image/png"/><item href="" id="chap_0" media-type="application/xhtml+xml"/></manifest><spine toc="ncx" page-progression-direction="rtl"><itemref idref="toc"/><itemref idref="chap_0"/></spine><guide><reference href="1.xhtml" title="封面" type="cover"/></guide></package>"###;
         assert_eq!(ass, res.as_str());
     }
 
@@ -1112,5 +1176,31 @@ ok
             "https://github.githubassets.com/assets/code-9c9b8dc61e74.css",
             info.link[1].href
         );
+
+        // 测试style
+
+        let info= get_html_info(
+            r#"<html xml:lang="en" lang="zh" dir="cis">
+    <head><title> Test Title `~!@#$%^&amp;*()_+ and []\{}| and2 ;&apos;:&quot; and3 ,./&lt;&gt;? </title><link rel="preconnect" href="https://avatars.githubusercontent.com"> 
+    <link crossorigin="anonymous" media="all" rel="stylesheet" href="https://github.githubassets.com/assets/code-9c9b8dc61e74.css" />
+    <style>body{color: white;}</style
+    </head>
+    <body>
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(2, info.link.len());
+        assert_eq!(LinkRel::OTHER("preconnect".to_string()), info.link[0].rel);
+        assert_eq!(LinkRel::CSS, info.link[1].rel);
+
+        assert_eq!(
+            "https://github.githubassets.com/assets/code-9c9b8dc61e74.css",
+            info.link[1].href
+        );
+        assert_eq!("body{color: white;}", info.style.unwrap());
     }
 }
