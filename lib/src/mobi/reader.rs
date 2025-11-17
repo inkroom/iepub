@@ -394,7 +394,7 @@ where
     Ok(true)
 }
 
-pub struct MobiReader<T> {
+pub struct MobiReader<T: Read + Seek> {
     reader: BufReader<T>,
     pub(crate) pdb_header: PDBHeader,
     pub(crate) mobi_doc_header: MOBIDOCHeader,
@@ -404,6 +404,13 @@ pub struct MobiReader<T> {
     text_cache: Option<Vec<u8>>,
     /// 自增id
     id: AtomicUsize,
+}
+
+impl<T: Read + Seek> Drop for MobiReader<T> {
+    fn drop(&mut self) {
+        self.release_memory();
+        self.exth_header = None;
+    }
 }
 
 impl<T: Read + Seek> MobiReader<T> {
@@ -648,6 +655,15 @@ impl<T: Read + Seek> MobiReader<T> {
         pos.push(prev);
 
         Ok(pos)
+    }
+
+    pub fn release_memory(&mut self) {
+        if let Some(mut cache) = self.text_cache.take() {
+            // 显式清空 Vec，释放内存
+            cache.clear();
+            // Vec 会在离开作用域时自动释放，但 clear() 可以立即释放容量
+            cache.shrink_to_fit();
+        }
     }
 }
 
