@@ -180,13 +180,65 @@ impl EpubHtml {
     pub fn data(&self) -> Option<&[u8]> {
         self._data.as_deref()
     }
+
+    pub(crate) fn read_data(&mut self, reader: &mut impl EpubReaderTrait) {
+        let (id, origin) = if let Some(index) = self._file_name.find('#') {
+            (
+                Some(&self._file_name[(index + 1)..]),
+                self._file_name[0..index].to_string(),
+            )
+        } else {
+            (None, self.file_name().to_string())
+        };
+        let mut f = String::from(self._file_name.as_str());
+        let prefixs = ["", common::EPUB, common::EPUB3];
+        if self._data.is_none() && !f.is_empty() {
+            for prefix in prefixs.iter() {
+                // 添加 前缀再次读取
+                f = format!("{prefix}{origin}");
+                let d = reader.read_string(f.as_str());
+                match d {
+                    Ok(v) => {
+                        if let Ok(html::HtmlInfo {
+                            title,
+                            content,
+                            language,
+                            direction,
+                            link,
+                            style,
+                        }) = get_html_info(v.as_str(), id)
+                        {
+                            if !title.is_empty() {
+                                self.set_title(&title);
+                            }
+                            self.set_data(content);
+                            if let Some(lang) = language {
+                                self.set_language(lang);
+                            }
+                            self.direction = direction;
+                            if !link.is_empty() {
+                                self.links = Some(link);
+                            }
+                            self.css = style;
+                        }
+                        break;
+                    }
+                    Err(IError::FileNotFound) => {}
+                    Err(_e) => {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     ///
     /// 获取数据
     ///
     /// 支持延迟读取
     ///
     pub fn data_mut(&mut self) -> Option<&[u8]> {
-        let (id, origin) = if let Some(index) = self._file_name.find('#') {
+       let (id, origin) = if let Some(index) = self._file_name.find('#') {
             (
                 Some(&self._file_name[(index + 1)..]),
                 self._file_name[0..index].to_string(),
@@ -657,7 +709,7 @@ impl EpubBook {
         self.info.title.clear();
         self.info.title.push_str(title.as_ref());
     }
-    
+
     pub fn title(&self) -> &str {
         self.info.title.as_str()
     }
@@ -666,7 +718,7 @@ impl EpubBook {
         self.set_title(title.as_ref());
         self
     }
-    
+
     pub fn identifier(&self) -> &str {
         self.info.identifier.as_str()
     }
@@ -835,7 +887,7 @@ impl EpubBook {
         self.cover.as_mut()
     }
 
-    pub fn cover_chapter(&self)->Option<&EpubHtml>{
+    pub fn cover_chapter(&self) -> Option<&EpubHtml> {
         self.cover_chapter.as_ref()
     }
 
@@ -873,6 +925,11 @@ impl EpubBook {
                 }
                 self.chapters.insert(index + offset, chap);
                 offset += 1;
+            }
+        }
+        if let Some(cover) = &mut self.cover_chapter {
+            if let Some(r) = &self.reader {
+                cover.reader = Some(Arc::clone(r));
             }
         }
     }
