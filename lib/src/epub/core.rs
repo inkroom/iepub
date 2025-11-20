@@ -129,7 +129,7 @@ crate::cache_struct! {
     /**
      * 链接文件，可能是css
      */
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct EpubLink {
         pub rel: LinkRel,
         pub file_type: String,
@@ -138,7 +138,7 @@ crate::cache_struct! {
 }
 
 epub_base_field! {
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     pub struct EpubHtml {
         pub(crate) lang: String,
         links: Option<Vec<EpubLink>>,
@@ -825,6 +825,13 @@ impl EpubBook {
             chap.reader = Some(Arc::clone(r));
         }
         self.chapters.push(chap);
+    }
+
+    pub fn insert_chapter(&mut self, index: usize, mut chap: EpubHtml) {
+        if let Some(r) = &self.reader {
+            chap.reader = Some(Arc::clone(r));
+        }
+        self.chapters.insert(index, chap);
     }
 
     pub fn chapters_mut(&mut self) -> std::slice::IterMut<'_, EpubHtml> {

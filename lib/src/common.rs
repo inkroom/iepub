@@ -618,10 +618,10 @@ pub(crate) mod tests {
             // 下载并解压
             let mut res = get_req(url)
                 .send()
-                .map_err(|e: reqwest::Error| IError::InvalidArchive(Cow::from("download fail")))
+                .map_err(|e: reqwest::Error| IError::InvalidArchive(Cow::from(format!("download fail {:?}",e))))
                 .and_then(|res| {
                     if !res.status().is_success() {
-                        Err(IError::InvalidArchive(Cow::from("download fail")))
+                        Err(IError::InvalidArchive(Cow::from(format!("download fail {:?}",res.status()))))
                     } else {
                         Ok(res)
                     }
@@ -640,14 +640,18 @@ pub(crate) mod tests {
     pub fn download_zip_file(name: &str, url: &str) -> String {
         use super::IError;
         use std::{borrow::Cow, io::Read};
-        let out = format!("../target/{name}");
+        let out = if std::path::Path::new("target").exists() {
+            format!("target/{name}")
+        } else {
+            format!("../target/{name}")
+        };
         if std::fs::metadata(&out).is_err() {
             // 下载并解压
 
             let zip = get_req_mem(url);
 
             let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip))
-                .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
+                .map_err(|e| IError::InvalidArchive(Cow::from(format!( "download fail {:?}",e))))
                 .expect("zip fail");
             let mut zip = zip.by_name(name).unwrap();
             let mut v = Vec::new();

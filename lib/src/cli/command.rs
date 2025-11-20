@@ -30,7 +30,7 @@ fn get_single_input(message: &str) -> Result<String, IError> {
 fn out_file(global_opts: &[arg::ArgOption], opts: &[arg::ArgOption], path: &str) -> bool {
     !std::path::Path::new(path).exists()
         || is_overiade(global_opts, opts)
-        || get_single_input("Override file？(y/n)")
+        || get_single_input(format!("{} exist, Override file？(y/n)", path).as_str())
             .unwrap()
             .to_lowercase()
             == "y"
@@ -165,7 +165,8 @@ pub(crate) mod epub {
                     ),
                     OptionDef::create("n", "不添加标题，默认添加", OptionType::NoParamter, false),
                     OptionDef::create("out", "输出文件位置", OptionType::String, true),
-                    OptionDef::create("skip", "跳过指定目录数", OptionType::String, false),
+                    OptionDef::create("skip", "跳过指定章节数", OptionType::String, false),
+                    OptionDef::create("exclude", "跳过指定标题的章节", OptionType::Array, false),
                     OptionDef::create("cover", "封面图片", OptionType::String, false),
                     OptionDef::create("title", "标题", OptionType::String, false),
                     OptionDef::create("author", "作者", OptionType::String, false),
@@ -265,6 +266,7 @@ pub(crate) mod epub {
                     }
                 }
                 let skip = opts.get_value_or_default("skip", 0);
+                let exclude = opts.get_values::<_, String>("exclude").unwrap_or_default();
 
                 if let Some(bs) = opts.get_values::<_, String>("child") {
                     let first_book_name =
@@ -286,6 +288,7 @@ pub(crate) mod epub {
                                     .map(|f| f.to_string_lossy().into_owned().replace(".epub", ""))
                             })
                             .filter(|_| group),
+                            exclude.as_slice()
                     )
                     .unwrap();
 
@@ -322,6 +325,7 @@ pub(crate) mod epub {
                                     })
                                 })
                                 .filter(|_| group),
+                                exclude.as_slice(),
                         )
                         .unwrap();
                         builder = v.0;
