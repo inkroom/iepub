@@ -56,11 +56,20 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool, dir: &Option<Dire
     <title>{title}</title>
 {css}
 </head>
-  <body>
+  <body{}>
     {}
 {body}
   </body>
 </html>"#,
+        if let Some(v) = chap
+            .body_attribute
+            .as_ref()
+            .and_then(|f| String::from_utf8(f.clone()).ok())
+        {
+            v
+        } else {
+            String::new()
+        },
         if append_title {
             format!(r#"<h1 style="text-align: center">{}</h1>"#, title)
         } else {
@@ -410,6 +419,7 @@ pub(crate) struct HtmlInfo {
     pub(crate) direction: Option<Direction>,
     pub(crate) link: Vec<EpubLink>,
     pub(crate) style: Option<String>,
+    pub(crate) body_attribute: Option<Vec<u8>>,
 }
 
 ///
@@ -430,6 +440,7 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
     let mut buf = Vec::new();
     let mut parent: Vec<&str> = Vec::new();
     let mut body_data: Option<Vec<u8>> = None;
+    let mut body_attribute: Option<Vec<u8>> = None;
     let mut style = String::new();
     loop {
         match reader.read_event_into(&mut buf) {
@@ -515,6 +526,10 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                     }
                 }
                 b"body" => {
+                    let a = body.attributes_raw().to_vec();
+                    if !a.is_empty() {
+                        body_attribute = Some(a);
+                    }
                     body_data = reader
                         .read_text(body.to_end().to_owned().name())
                         .map(|f| f.as_bytes().to_vec())
@@ -604,6 +619,7 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
         } else {
             Some(style.trim().to_string())
         },
+        body_attribute,
     })
 }
 
@@ -777,6 +793,25 @@ ok
 <style type="text/css">#id{width:10%}</style>
 </head>
   <body>
+    <h1 style="text-align: center">title</h1>
+ok
+  </body>
+</html>"###
+        );
+        t.body_attribute = Some(" class=\"ok\"".as_bytes().to_vec());
+        let html = to_html(&mut t, true, &Some(Direction::RTL));
+
+        assert_eq!(
+            html,
+            r###"<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="z3998: http://www.daisy.org/z3998/2012/vocab/structure/#" lang="zh" xml:lang="zh" dir="ltr">
+  <head>
+    <title>title</title>
+<link href="href" rel="stylesheet" type="text/css"/><link href="1.css" rel="t"/>
+<style type="text/css">#id{width:10%}</style>
+</head>
+  <body class="ok">
     <h1 style="text-align: center">title</h1>
 ok
   </body>
@@ -1063,6 +1098,8 @@ ok
         assert_eq!(None, info.language);
         assert_eq!(r"测试标题", info.title);
 
+        assert!(info.body_attribute.is_none());
+
         assert_eq!(
             r"
     <p>段落1</p>ok
@@ -1202,5 +1239,33 @@ ok
             info.link[1].href
         );
         assert_eq!("body{color: white;}", info.style.unwrap());
+
+        // 测试body attribute
+
+        let info= get_html_info(
+            r#"<html xml:lang="en" lang="zh" dir="cis">
+    <head><title> Test Title `~!@#$%^&amp;*()_+ and []\{}| and2 ;&apos;:&quot; and3 ,./&lt;&gt;? </title><link rel="preconnect" href="https://avatars.githubusercontent.com"> 
+    <link crossorigin="anonymous" media="all" rel="stylesheet" href="https://github.githubassets.com/assets/code-9c9b8dc61e74.css" />
+    <style>body{color: white;}</style
+    </head>
+    <body class="b">
+    <p>段落1</p>ok
+    </body>
+         </html>"#,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(2, info.link.len());
+        assert_eq!(LinkRel::OTHER("preconnect".to_string()), info.link[0].rel);
+        assert_eq!(LinkRel::CSS, info.link[1].rel);
+
+        assert_eq!(
+            "https://github.githubassets.com/assets/code-9c9b8dc61e74.css",
+            info.link[1].href
+        );
+        assert_eq!("body{color: white;}", info.style.unwrap());
+        assert!(info.body_attribute.is_some());
+        assert_eq!(b" class=\"b\"", info.body_attribute.unwrap().as_slice());
     }
 }

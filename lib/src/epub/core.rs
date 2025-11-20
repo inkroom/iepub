@@ -149,7 +149,9 @@ epub_base_field! {
         /// 文件初始内容
         raw_data:Option<String>,
         /// 方向
-       pub(crate) direction:Option<Direction>,
+        pub(crate) direction: Option<Direction>,
+        /// body 标签上的attribute
+        pub(crate) body_attribute: Option<Vec<u8>>,
     }
 }
 
@@ -206,6 +208,7 @@ impl EpubHtml {
                             direction,
                             link,
                             style,
+                            body_attribute,
                         }) = get_html_info(v.as_str(), id)
                         {
                             if !title.is_empty() {
@@ -220,6 +223,7 @@ impl EpubHtml {
                                 self.links = Some(link);
                             }
                             self.css = style;
+                            self.body_attribute = body_attribute;
                         }
                         break;
                     }
@@ -263,6 +267,7 @@ impl EpubHtml {
                             direction,
                             link,
                             style,
+                            body_attribute,
                         }) = get_html_info(v.as_str(), id)
                         {
                             if !title.is_empty() {
@@ -277,6 +282,7 @@ impl EpubHtml {
                                 self.links = Some(link);
                             }
                             self.css = style;
+                            self.body_attribute = body_attribute;
                         }
                         break;
                     }

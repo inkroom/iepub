@@ -610,6 +610,7 @@ pub mod concat {
                     old.to_string(),
                     v.as_str(),
                 ));
+            new_html.body_attribute = ele.body_attribute.clone();
 
             for ele in ele.links().unwrap_or_default() {
                 // link 也需要调整引用路径
