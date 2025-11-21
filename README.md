@@ -62,7 +62,7 @@ let mut bbook = read_from_file("epub格式文件绝对路径");
 
 ### 注意事项
 
-- `iepub`使用`EpubHtml`来存储章节内容，但是`EpubHtml#data`实际只会存储 html>body 节点内的内容，并且**不包括**body节点的属性(attribute)，其他比如样式表将会存放在其他属性中
+- `iepub`使用`EpubHtml`来存储章节内容，但是`EpubHtml#data`实际只会存储 html>body 节点内的内容，其他比如样式表将会存放在其他属性中
 - 不同的阅读器对于文件名的兼容性不同，这里建议文件最好使用`.xhtml`后缀，例如`EpubHtml::default().with_file_name("1.xhtml")`
 
 
@@ -176,6 +176,7 @@ MobiWriter::new(&mut v)
 - 格式转换
 - 电子书合并
 - 文本替换
+- 电子书瘦身
 
 可通过`-h`获取使用方法说明
 
