@@ -676,6 +676,11 @@ impl Display for EpubBook {
     )
     }
 }
+impl Drop for EpubBook {
+    fn drop(&mut self) {
+        self.release_memory();
+    }
+}
 
 impl EpubBook {
     iepub_derive::option_string_method!(info, creator);
@@ -952,6 +957,16 @@ impl EpubBook {
         for assets in self.assets_mut() {
             assets.with_version(&version);
         }
+    }
+
+    pub fn release_memory(&mut self) {
+        self.reader = None;
+        self.chapters.clear();
+        self.assets.clear();
+        self.nav.clear();
+        self.meta.clear();
+        self.cover = None;
+        self.version = String::new();
     }
 
     #[cfg(feature = "cache")]

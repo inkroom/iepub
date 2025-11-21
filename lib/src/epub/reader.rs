@@ -803,25 +803,21 @@ fn has_epub_type(e: &BytesStart, value: &str) -> bool {
 }
 
 #[derive(Debug, Clone)]
-struct EpubReader<T> {
+struct EpubReader<T: Read + Seek> {
     inner: zip::ZipArchive<T>,
 }
 
-// impl <T: Read + Seek> From<Vec<u8>> for EpubReader<T> {
-//     fn from(value: Vec<u8>) -> Self {
+impl<T: Read + Seek> Drop for EpubReader<T> {
+    fn drop(&mut self) {}
+}
 
-//         EpubReader{
-//             inner:
-//         }
-
-//     }
-// }
 impl<T: Read + Seek> EpubReader<T> {
     pub fn new(value: T) -> IResult<Self> {
         let r = zip::ZipArchive::new(value)?;
         Ok(EpubReader { inner: r })
     }
 }
+
 impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
     fn read(&mut self, book: &mut EpubBook) -> IResult<()> {
         let reader = &mut self.inner;
