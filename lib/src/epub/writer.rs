@@ -109,20 +109,6 @@ impl<T: Write + Seek> EpubWriter<T> {
         Ok(())
     }
 
-    /// 生成章节页
-    fn gen_cover_chapter(&mut self, book: &mut EpubBook) {
-        if let Some(cover) = book.cover() {
-            // 生成 cover 页
-            let src = crate::path::Path::system("text").releative(cover.file_name());
-            let c = EpubHtml::default()
-                .with_file_name("text/cover.xhtml")
-                .with_title("cover")
-                .with_data(format!(r##"<img src="{src}"/>"##).as_bytes().to_vec());
-
-            book.cover_chapter = Some(c);
-        }
-    }
-
     /// 写入基础的文件
     fn write_base(&mut self, book: &mut EpubBook) -> IResult<()> {
         if book.version().is_empty() {
@@ -183,16 +169,22 @@ impl<T: Write + Seek> EpubWriter<T> {
     /// 写入目录
     fn write_nav(&mut self, book: &mut EpubBook) -> IResult<()> {
         // 目录包括两部分，一是自定义的用于书本导航的html，二是epub规范里的toc.ncx文件
-        self.write_file(
-            common::NAV,
-            to_nav_html(
-                book.title(),
-                book.nav(),
-                book.language().unwrap_or(""),
-                &book.direction,
-            )
-            .as_bytes(),
-        )?;
+        if book
+            .chapters()
+            .all(|f| f.file_name() != common::NAV.replace(common::EPUB, ""))
+        {
+            self.write_file(
+                common::NAV,
+                to_nav_html(
+                    book.title(),
+                    book.nav(),
+                    book.language().unwrap_or(""),
+                    &book.direction,
+                )
+                .as_bytes(),
+            )?;
+        }
+
         self.write_file(common::TOC, to_toc_xml(book.title(), book.nav()).as_bytes())?;
 
         Ok(())
@@ -204,28 +196,43 @@ impl<T: Write + Seek> EpubWriter<T> {
     /// 拷贝资源文件以及生成对应的xhtml文件
     ///
     fn write_cover(&mut self, book: &mut EpubBook) -> IResult<()> {
+        let has_cover_xhtml = book
+            .get_chapter(common::COVER.replace(common::EPUB, ""))
+            .is_some();
         book.cover_chapter = if let Some(cover) = book.cover_mut() {
-            self.write_file(
-                format!("{}{}", common::EPUB, cover.file_name()).as_str(),
-                cover.data_mut().as_ref().unwrap(),
-            )?;
-
             // 生成 cover 页
             let src = cover.file_name();
             let mut c = EpubHtml::default()
                 .with_file_name(common::COVER.replace(common::EPUB, ""))
-                .with_title("cover")
+                .with_title("封面")
                 .with_css("html,body,div,img{width: 100%;}")
-                .with_data(format!(r##"<body><div><img src="{src}"/></div></body>"##).as_bytes().to_vec());
-
-            self.write_file(
-                common::COVER,
-                to_html(&mut c, false, &book.direction).as_bytes(),
-            )?;
+                .with_data(
+                    format!(r##"<body><div><img src="{src}"/></div></body>"##)
+                        .as_bytes()
+                        .to_vec(),
+                );
+            if !has_cover_xhtml {
+                self.write_file(
+                    common::COVER,
+                    to_html(&mut c, false, &book.direction).as_bytes(),
+                )?;
+            }
             Some(c)
         } else {
             None
         };
+
+        if let Some(cover) = book
+            .cover()
+            .filter(|f| book.get_assets(f.file_name()).is_none())
+        {
+            if let Some(data) = cover.data() {
+                self.write_file(
+                    format!("{}{}", common::EPUB, cover.file_name()).as_str(),
+                    data,
+                )?;
+            }
+        }
         Ok(())
     }
 }

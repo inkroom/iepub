@@ -233,25 +233,25 @@ fn read_guide_xml(
                     // <reference href="cover.xhtml" title="cover" type="cover"/>
                     // 读取封面页的时候，不一定已经获取到了章节
                     if let Some(_t) = e
-                            .try_get_attribute("type")
-                            .ok()
-                            .and_then(|f| f)
-                            .map(|f| {
+                        .try_get_attribute("type")
+                        .ok()
+                        .and_then(|f| f)
+                        .map(|f| {
+                            f.unescape_value()
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        })
+                        .filter(|f| f == "cover")
+                    {
+                        if let Some(href) =
+                            e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
                                 f.unescape_value()
                                     .map_or_else(|_| String::new(), |v| v.to_string())
                             })
-                            .filter(|f| f == "cover")
                         {
-                            if let Some(href) =
-                                e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
-                                    f.unescape_value()
-                                        .map_or_else(|_| String::new(), |v| v.to_string())
-                                })
-                            {
-                                book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
-                            }
-                            break;
+                            book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
                         }
+                        break;
+                    }
                 }
                 _ => {}
             },

@@ -533,7 +533,7 @@ fn hex_char_to_value(c: char) -> IResult<u8> {
 ///    font-family: Arial;
 /// }
 /// ```
-pub(crate) fn get_css_content_url<'a, T: AsRef<str> + ?Sized>(css: &'a T) -> Vec<&'a str> {
+pub fn get_css_content_url<'a, T: AsRef<str> + ?Sized>(css: &'a T) -> Vec<&'a str> {
     let mut res = Vec::new();
 
     let line = css.as_ref().split("\n").collect::<Vec<&str>>();
@@ -618,10 +618,15 @@ pub(crate) mod tests {
             // 下载并解压
             let mut res = get_req(url)
                 .send()
-                .map_err(|e: reqwest::Error| IError::InvalidArchive(Cow::from(format!("download fail {:?}",e))))
+                .map_err(|e: reqwest::Error| {
+                    IError::InvalidArchive(Cow::from(format!("download fail {:?}", e)))
+                })
                 .and_then(|res| {
                     if !res.status().is_success() {
-                        Err(IError::InvalidArchive(Cow::from(format!("download fail {:?}",res.status()))))
+                        Err(IError::InvalidArchive(Cow::from(format!(
+                            "download fail {:?}",
+                            res.status()
+                        ))))
                     } else {
                         Ok(res)
                     }
@@ -651,7 +656,7 @@ pub(crate) mod tests {
             let zip = get_req_mem(url);
 
             let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip))
-                .map_err(|e| IError::InvalidArchive(Cow::from(format!( "download fail {:?}",e))))
+                .map_err(|e| IError::InvalidArchive(Cow::from(format!("download fail {:?}", e))))
                 .expect("zip fail");
             let mut zip = zip.by_name(name).unwrap();
             let mut v = Vec::new();

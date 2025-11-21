@@ -242,7 +242,7 @@ impl EpubHtml {
     /// 支持延迟读取
     ///
     pub fn data_mut(&mut self) -> Option<&[u8]> {
-       let (id, origin) = if let Some(index) = self._file_name.find('#') {
+        let (id, origin) = if let Some(index) = self._file_name.find('#') {
             (
                 Some(&self._file_name[(index + 1)..]),
                 self._file_name[0..index].to_string(),
@@ -376,6 +376,10 @@ impl EpubHtml {
 
     pub fn links(&self) -> Option<std::slice::Iter<'_, EpubLink>> {
         self.links.as_ref().map(|f| f.iter())
+    }
+
+    pub fn links_mut(&mut self) -> Option<std::slice::IterMut<'_, EpubLink>> {
+        self.links.as_mut().map(|f| f.iter_mut())
     }
 
     pub fn add_link(&mut self, link: EpubLink) {

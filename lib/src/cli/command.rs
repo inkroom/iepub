@@ -121,6 +121,7 @@ fn read_book(file: &str) -> IResult<OwnBook> {
 }
 
 pub(crate) mod epub {
+    use std::collections::HashMap;
     use std::vec;
 
     use crate::cli::arg::OptUtil;
@@ -197,7 +198,7 @@ pub(crate) mod epub {
             book: &mut Book,
             global_opts: &[ArgOption],
             opts: &[ArgOption],
-            _args: &[String],
+            args: &[String],
         ) {
             let append_title = !opts.has_opt("n");
             let group = !opts.has_opt("group");
@@ -288,7 +289,7 @@ pub(crate) mod epub {
                                     .map(|f| f.to_string_lossy().into_owned().replace(".epub", ""))
                             })
                             .filter(|_| group),
-                            exclude.as_slice()
+                        exclude.as_slice(),
                     )
                     .unwrap();
 
@@ -325,20 +326,49 @@ pub(crate) mod epub {
                                     })
                                 })
                                 .filter(|_| group),
-                                exclude.as_slice(),
+                            exclude.as_slice(),
                         )
                         .unwrap();
                         builder = v.0;
                         len = v.1;
                         assets_len = v.2;
                     }
+
+                    let mut out_book = builder.append_title(append_title).book().unwrap();
+                    // 瘦身，去除重复文件
+                    #[cfg(feature = "md-5")]
+                    {
+                        let op = Optimize {};
+                        op.handle(
+                            &mut Book::EPUB(&mut out_book),
+                            global_opts,
+                            opts,
+                            args,
+                            false,
+                        );
+                    }
+
+                    for ele in book
+                        .assets()
+                        .enumerate()
+                        .filter(|f| {
+                            f.1.file_name() == "toc.ncx"
+                                || f.1.file_name() == "cover.jpg"
+                                || f.1.file_name() == "cover.xhtml"
+                        })
+                        .map(|f| f.0)
+                        .rev()
+                        .collect::<Vec<usize>>()
+                    {
+                        out_book.remove_assets(ele);
+                    }
+
                     if let Some(path) = opts.get_value::<_, String>("out") {
                         if out_file(global_opts, opts, &path) {
                             msg!("writing book to {}", path);
-                            builder
-                                .append_title(append_title)
-                                .file(path.as_str())
-                                .unwrap();
+                            if let Err(e) = EpubWriter::write_to_file(path, &mut out_book, false) {
+                                exec_err!("写入文件错误 {:?}", e);
+                            };
                         }
                     }
                 }
@@ -884,13 +914,6 @@ pub(crate) mod epub {
                 let out: String = opts.get_value("out").unwrap();
                 if out_file(global_opts, opts, out.as_str()) {
                     if let Err(e) = EpubWriter::write_to_file(out, book, false) {
-                        println!(
-                            "{:?}",
-                            book.assets()
-                                .map(|f| f.file_name().to_string())
-                                .collect::<Vec<String>>()
-                        );
-
                         exec_err!("写入文件错误 {:?}", e);
                     };
                 }
@@ -914,6 +937,176 @@ pub(crate) mod epub {
                 return get_file_name(book.nav().as_slice());
             }
             Vec::new()
+        }
+    );
+    #[cfg(feature = "md-5")]
+    create_command!(
+        Optimize,
+        "optimize",
+        {
+            arg::CommandOptionDef {
+                command: "optimize".to_string(),
+                support_args: 0,
+                desc: "通过剔除重复文件实现电子书瘦身".to_string(),
+                opts: vec![
+                    OptionDef::create("out", "输出文件位置", OptionType::String, true),
+                    OptionDef::over(),
+                ],
+            }
+        },
+        fn exec(
+            &self,
+            book: &mut Book,
+            global_opts: &[ArgOption],
+            opts: &[ArgOption],
+            args: &[String],
+        ) {
+            self.handle(book, global_opts, opts, args, true);
+            if let Book::EPUB(book) = book {
+                let out: String = opts.get_value("out").unwrap();
+                if out_file(global_opts, opts, out.as_str()) {
+                    if let Err(e) = EpubWriter::write_to_file(out, book, false) {
+                        exec_err!("写入文件错误 {:?}", e);
+                    };
+                }
+            }
+        },
+        fn handle(
+            &self,
+            book: &mut Book,
+            _global_opts: &[ArgOption],
+            _opts: &[ArgOption],
+            _args: &[String],
+            release_mem: bool,
+        ) {
+            use md5::Digest;
+            use md5::Md5;
+            if let Book::EPUB(book) = book {
+                let mut hash_map: HashMap<String, String> = HashMap::new();
+                let mut need_replace = HashMap::new();
+                // 遍历资源文件，计算md5值
+                let mut rm = Vec::new();
+                for (index, ele) in book.assets_mut().enumerate() {
+                    if let Some(data) = ele.data_mut() {
+                        let mut hasher = Md5::new();
+                        hasher.update(data);
+
+                        let result = hasher.finalize();
+                        let v = format!("{:x}", result);
+                        if let Some(first_file_name) = hash_map.get(v.as_str()) {
+                            need_replace.insert(
+                                ele.file_name().to_string(),
+                                first_file_name.as_str().to_string(),
+                            );
+                            rm.push(index);
+                        } else {
+                            hash_map.insert(v, ele.file_name().to_string());
+                        }
+                        if release_mem {
+                            ele.release_data();
+                        }
+                    }
+                }
+
+                for ele in rm.iter().rev() {
+                    // 必须反向移除
+                    book.remove_assets(*ele);
+                }
+                let rm_assets_name: Vec<String> =
+                    need_replace.iter().map(|f| f.0.to_string()).collect();
+
+                for ele in book.chapters_mut() {
+                    let current = iepub::path::Path::system(ele.file_name()).pop();
+                    let file_name = ele.file_name().to_string();
+                    if let Some(data) = ele.data_mut() {
+                        let v = |v| {
+                            let path = String::from_utf8(v).unwrap_or_default();
+                            let t = current.join(path.as_str()).to_str();
+
+                            // 查找是否被替换
+                            if let Some(first_name) = rm_assets_name
+                                .iter()
+                                .find(|f| t == **f)
+                                .and_then(|f| need_replace.get(f))
+                            {
+                                let n = format!(r#""{}""#, current.releative(first_name.as_str()));
+                                msg!("replace assets [{}] to [{}] in [{}]", t, n, file_name);
+                                n.as_bytes().to_vec()
+                            } else {
+                                format!(r#""{path}""#).as_bytes().to_vec()
+                            }
+                        };
+                        use iepub::internal::generate_text_img_xml;
+
+                        let html = generate_text_img_xml(data, "img", "src", v);
+                        let html = generate_text_img_xml(html.as_slice(), "image", "xlink:href", v);
+                        ele.set_data(html.to_vec());
+                    }
+                    // 替换 引用
+                    if let Some(t) = ele.links_mut() {
+                        for link in t {
+                            let j = current.join(link.href.as_str()).to_str();
+                            if let Some(first_name) = rm_assets_name
+                                .iter()
+                                .find(|f| j == **f)
+                                .and_then(|f| need_replace.get(f))
+                            {
+                                let nh = current.releative(first_name.as_str());
+
+                                msg!(
+                                    "replace link [{}] to [{}] in [{}]",
+                                    link.href,
+                                    nh,
+                                    file_name
+                                );
+                                link.href = nh;
+                            }
+                        }
+                    }
+                }
+
+                // 保留的css中的url也需要替换
+                for ele in book.assets_mut() {
+                    if let Some(data) = ele
+                        .data_mut()
+                        .and_then(|f| String::from_utf8(f.to_vec()).ok())
+                    {
+                        let current = iepub::path::Path::system(ele.file_name()).pop();
+
+                        let url = iepub::internal::get_css_content_url(data.as_str());
+                        let mut n_data = data.clone();
+                        for u in url {
+                            let r = current.join(u).to_str();
+                            if let Some(first_name) = rm_assets_name
+                                .iter()
+                                .find(|v| v.as_str() == r)
+                                .and_then(|f| need_replace.get(f))
+                            {
+                                let nh = current.releative(first_name.as_str());
+                                msg!("replace url [{}] to [{}] in [{}]", u, nh, ele.file_name());
+                                n_data = n_data.replace(u, &nh);
+                            }
+                        }
+                        ele.set_data(n_data.as_bytes().to_vec());
+                    }
+                }
+
+                for ele in book
+                    .assets()
+                    .enumerate()
+                    .filter(|f| {
+                        f.1.file_name() == "toc.ncx"
+                            || f.1.file_name() == "cover.jpg"
+                            || f.1.file_name() == "cover.xhtml"
+                            || f.1.file_name() == "nav.xhtml"
+                    })
+                    .map(|f| f.0)
+                    .rev()
+                    .collect::<Vec<usize>>()
+                {
+                    book.remove_assets(ele);
+                }
+            }
         }
     );
 }
