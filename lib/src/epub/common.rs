@@ -1,5 +1,5 @@
 crate::cache_enum! {
-    #[derive(PartialEq)]
+    #[derive(PartialEq, Clone)]
     pub enum LinkRel {
         CSS,
         OTHER(String),

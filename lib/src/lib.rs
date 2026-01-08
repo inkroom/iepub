@@ -51,3 +51,8 @@ pub mod prelude {
         pub use crate::adapter::core::mobi_to_epub;
     }
 }
+
+pub mod internal {
+    pub use crate::adapter::core::generate_text_img_xml;
+    pub use crate::common::get_css_content_url;
+}

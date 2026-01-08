@@ -88,6 +88,9 @@ pub enum IError {
     Encoding(quick_xml::encoding::EncodingError),
     NoNav(&'static str),
     Cover(String),
+    IncompleteEncoding,
+    InvalidHexChar(char),
+    Utf8ConversionError,
     #[cfg(feature = "cache")]
     Cache(String),
     Unknown,
@@ -102,7 +105,14 @@ impl From<serde_json::Error> for IError {
 
 impl std::fmt::Display for IError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            IError::IncompleteEncoding => write!(f, "百分比编码不完整"),
+            IError::InvalidHexChar(c) => write!(f, "无效的十六进制字符: {}", c),
+            IError::Utf8ConversionError => write!(f, "UTF-8转换失败"),
+            _ => {
+                write!(f, "{:?}", self)
+            }
+        }
     }
 }
 
@@ -467,9 +477,117 @@ pub(crate) fn get_media_type(file_name: &str) -> String {
     String::new()
 }
 
+pub fn urldecode_enhanced(input: &str) -> IResult<String> {
+    let mut result = Vec::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '%' => {
+                // 收集两个十六进制字符
+                let hex1 = chars.next().ok_or(IError::IncompleteEncoding)?;
+                let hex2 = chars.next().ok_or(IError::IncompleteEncoding)?;
+
+                let byte = decode_hex_byte(hex1, hex2)?;
+                result.push(byte);
+            }
+            '+' => {
+                result.push(b' ');
+            }
+            _ => {
+                // 直接字符，转换为UTF-8字节序列
+                let mut buf = [0; 4];
+                let encoded = ch.encode_utf8(&mut buf);
+                result.extend_from_slice(encoded.as_bytes());
+            }
+        }
+    }
+
+    // 将字节序列转换为UTF-8字符串
+    String::from_utf8(result).map_err(|_| IError::Utf8ConversionError)
+}
+
+fn decode_hex_byte(c1: char, c2: char) -> IResult<u8> {
+    let high = hex_char_to_value(c1)?;
+    let low = hex_char_to_value(c2)?;
+    Ok((high << 4) | low)
+}
+
+fn hex_char_to_value(c: char) -> IResult<u8> {
+    match c {
+        '0'..='9' => Ok(c as u8 - b'0'),
+        'a'..='f' => Ok(c as u8 - b'a' + 10),
+        'A'..='F' => Ok(c as u8 - b'A' + 10),
+        _ => Err(IError::InvalidHexChar(c)),
+    }
+}
+
+/// 提取css中引用的外部url，目前只支持url
+/// ```css
+/// @import "reset.css";
+/// @import url('fonts.css');
+/// @import url("https://fonts.googleapis.com/css");
+///            
+/// body {
+///    background: url(../images/bg.jpg);
+///    font-family: Arial;
+/// }
+/// ```
+pub fn get_css_content_url<'a, T: AsRef<str> + ?Sized>(css: &'a T) -> Vec<&'a str> {
+    let mut res = Vec::new();
+
+    let line = css.as_ref().split("\n").collect::<Vec<&str>>();
+
+    for ele in line {
+        let mut index = 0;
+        let byte = ele.as_bytes();
+        let count = byte.len();
+        loop {
+            if index + 4 >= count {
+                break;
+            }
+            if &byte[index..(index + 4)] == b"url(" {
+                // css 支持单引号，双引号和无引号
+                let mut start = index + 4;
+                let mut end = b')';
+                if byte[start] == b'\'' {
+                    end = b'\'';
+                    start += 1;
+                    index += 1;
+                } else if byte[start] == b'"' {
+                    end = b'"';
+                    start += 1;
+                    index += 1;
+                }
+
+                loop {
+                    if start >= count {
+                        index = start;
+                        break;
+                    }
+                    let t = byte[start];
+                    if t == end {
+                        let u = &ele[(index + 4)..start];
+
+                        res.push(u);
+
+                        index = start + 1;
+                        break;
+                    }
+                    start += 1;
+                }
+            } else {
+                index += 1;
+            }
+        }
+    }
+
+    res
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::common::DateTimeFormater;
+    use crate::common::{get_css_content_url, urldecode_enhanced, DateTimeFormater};
 
     pub fn get_req_mem(url: &str) -> Vec<u8> {
         get_req(url).send().unwrap().bytes().unwrap().to_vec()
@@ -500,10 +618,15 @@ pub(crate) mod tests {
             // 下载并解压
             let mut res = get_req(url)
                 .send()
-                .map_err(|e: reqwest::Error| IError::InvalidArchive(Cow::from("download fail")))
+                .map_err(|e: reqwest::Error| {
+                    IError::InvalidArchive(Cow::from(format!("download fail {:?}", e)))
+                })
                 .and_then(|res| {
                     if !res.status().is_success() {
-                        Err(IError::InvalidArchive(Cow::from("download fail")))
+                        Err(IError::InvalidArchive(Cow::from(format!(
+                            "download fail {:?}",
+                            res.status()
+                        ))))
                     } else {
                         Ok(res)
                     }
@@ -522,14 +645,18 @@ pub(crate) mod tests {
     pub fn download_zip_file(name: &str, url: &str) -> String {
         use super::IError;
         use std::{borrow::Cow, io::Read};
-        let out = format!("../target/{name}");
+        let out = if std::path::Path::new("target").exists() {
+            format!("target/{name}")
+        } else {
+            format!("../target/{name}")
+        };
         if std::fs::metadata(&out).is_err() {
             // 下载并解压
 
             let zip = get_req_mem(url);
 
             let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip))
-                .map_err(|e| IError::InvalidArchive(Cow::from("download fail")))
+                .map_err(|e| IError::InvalidArchive(Cow::from(format!("download fail {:?}", e))))
                 .expect("zip fail");
             let mut zip = zip.by_name(name).unwrap();
             let mut v = Vec::new();
@@ -576,5 +703,56 @@ pub(crate) mod tests {
                 .with_timezone_offset(-8)
                 .default_format()
         );
+    }
+
+    #[test]
+    fn decode_url() {
+        assert_eq!(
+            urldecode_enhanced("Images/c5eiR%E7%BF%BB%E8%AF%913.jpg").unwrap(),
+            "Images/c5eiR翻译3.jpg"
+        );
+    }
+
+    #[test]
+    fn test_get_css_content_url() {
+        let v = get_css_content_url(r##"background: url(../images/bg.jpg);"##);
+        assert_eq!(vec!["../images/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url("../images/bg.jpg");"##);
+        assert_eq!(vec!["../images/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url('../images/bg.jpg');"##);
+        assert_eq!(vec!["../images/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url('../images/bg.jpg);"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url('../images/bg.jpg");"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url("../images/bg.jpg');"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url('../images(/b)g.jpg');"##);
+        assert_eq!(vec!["../images(/b)g.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url('../images(/bg.jpg');"##);
+        assert_eq!(vec!["../images(/bg.jpg"], v);
+
+        let v = get_css_content_url(r##"background: url("../imag(es/bg.jpg');"##);
+        assert!(v.is_empty());
+
+        let v = get_css_content_url(r##"background: url('../ima中文ges(/bg.jpg');"##);
+        assert_eq!(vec!["../ima中文ges(/bg.jpg"], v);
+
+        let v = get_css_content_url(
+            r##".back {
+	background-image: url(../Images/contents.jpg);
+	background-repeat:no-repeat;
+	background-position:top center;
+	background-size:cover;
+}"##,
+        );
+        assert_eq!(vec!["../Images/contents.jpg"], v);
     }
 }

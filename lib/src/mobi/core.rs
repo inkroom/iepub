@@ -255,8 +255,8 @@ impl MobiBook {
     pub fn add_assets(&mut self, asset: MobiAssets) {
         self.images.push(asset)
     }
-    
-    pub fn remove_assets(&mut self,index: usize){
+
+    pub fn remove_assets(&mut self, index: usize) {
         self.images.remove(index);
     }
 
@@ -280,7 +280,7 @@ impl MobiBook {
         self.chapters.push(chap);
     }
 
-    pub fn remove_chapter(&mut self, index: usize){
+    pub fn remove_chapter(&mut self, index: usize) {
         self.chapters.remove(index);
     }
 

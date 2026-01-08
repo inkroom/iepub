@@ -217,6 +217,97 @@ fn read_meta_xml(
     Ok(())
 }
 
+/// 从xml中获取封面页
+fn read_guide_xml(
+    reader: &mut quick_xml::reader::Reader<&[u8]>,
+    book: &mut EpubBook,
+) -> IResult<()> {
+    use quick_xml::events::Event;
+    // 模拟 栈，记录当前的层级
+    let _parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => match e.name().as_ref() {
+                b"reference" => {
+                    // <reference href="cover.xhtml" title="cover" type="cover"/>
+                    // 读取封面页的时候，不一定已经获取到了章节
+                    if let Some(_t) = e
+                        .try_get_attribute("type")
+                        .ok()
+                        .and_then(|f| f)
+                        .map(|f| {
+                            f.unescape_value()
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        })
+                        .filter(|f| f == "cover")
+                    {
+                        if let Some(href) =
+                            e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+                                f.unescape_value()
+                                    .map_or_else(|_| String::new(), |v| v.to_string())
+                            })
+                        {
+                            book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                        }
+                        break;
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Empty(e)) => {
+                match e.name().as_ref() {
+                    b"reference" => {
+                        // <reference href="cover.xhtml" title="cover" type="cover"/>
+                        // 读取封面页的时候，不一定已经获取到了章节
+
+                        if let Some(t) = e
+                            .try_get_attribute("type")
+                            .ok()
+                            .and_then(|f| f)
+                            .map(|f| {
+                                f.unescape_value()
+                                    .map_or_else(|_| String::new(), |v| v.to_string())
+                            })
+                            .filter(|f| f == "cover")
+                        {
+                            if let Some(href) =
+                                e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+                                    f.unescape_value()
+                                        .map_or_else(|_| String::new(), |v| v.to_string())
+                                })
+                            {
+                                book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                            }
+                            break;
+                        }
+                    }
+                    _ => {
+                        // invalid!("item err")
+                    }
+                }
+            }
+            Ok(Event::End(e)) => match e.name().as_ref() {
+                b"guide" => {
+                    break;
+                }
+                _ => {}
+            },
+
+            Ok(Event::Eof) => {
+                break;
+            }
+            Err(_e) => {
+                return invalid!("err");
+            }
+            _ => {
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn read_spine_xml(
     reader: &mut quick_xml::reader::Reader<&[u8]>,
     book: &mut EpubBook,
@@ -238,6 +329,7 @@ fn read_spine_xml(
                         }
                         book.add_assets(ele.clone());
                     }
+                    break;
                 }
             }
 
@@ -372,6 +464,9 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                 }
                 b"spine" => {
                     read_spine_xml(&mut reader, book, &mut assets)?;
+                }
+                b"guide" => {
+                    read_guide_xml(&mut reader, book)?;
                 }
                 _ => {}
             },
@@ -779,6 +874,30 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
                 }
             }
         }
+        // 从封面页获取封面
+        {
+            if let Some(co) = &mut book.cover_chapter {
+                co.read_data(self);
+                // let _ = co.data_mut().unwrap(); // 死锁，因为是不可重入锁
+            }
+            if let Some(co) = book
+                .cover_chapter
+                .as_ref()
+                .filter(|_| book.cover().is_none())
+                .as_mut()
+                .and_then(|co| co.data().map(|s| (s, co.file_name())))
+            {
+                // 查找第一个img标签，然后找到对应的文件
+                if let Some(cover) = get_img_src(co.0, "img", "src")
+                    .or_else(|| get_img_src(co.0, "image", "xlink:href"))
+                    .and_then(|f| String::from_utf8(f).ok())
+                    .map(|src| crate::path::Path::system(co.1).pop().join(src).to_str())
+                    .and_then(|img| book.assets().find(|f| f.file_name() == img.as_str()))
+                {
+                    book.set_cover((*cover).clone());
+                }
+            }
+        }
         book.update_assets();
 
         Ok(())
@@ -823,6 +942,48 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
     }
 }
 
+/// 获取img的src值
+pub(crate) fn get_img_src(html: &[u8], tag: &str, attribute: &str) -> Option<Vec<u8>> {
+    let mut index: usize = 0;
+    let chars = html;
+
+    let tag = format!("<{tag} ");
+    let key = tag.as_bytes();
+
+    while index < chars.len() {
+        let mut now = chars[index];
+        let mut j = 0;
+        while j < key.len() {
+            if now == key[j] {
+                now = chars[index + j + 1];
+            } else {
+                break;
+            }
+            j += 1;
+        }
+        if j == key.len() {
+            // 找到 img 标签，接下来查找 src 属性
+            index += j;
+            // 查找完后数据被分成三段，第一段 为开头到 src=，第二段是src=到value结束，第三段是value结束到之后
+            // 第一段原样添加，第二段如果找到值替换recindex，没找到则原样添加，第三段继续循环
+
+            let att = crate::mobi::image::get_attr_value(
+                &chars[index..],
+                format!("{attribute}=").as_str(),
+            );
+            if let Some(v) = att.0 {
+                return Some(v);
+            }
+
+            index += att.1;
+        } else {
+            index += 1;
+        }
+    }
+
+    None
+}
+
 ///
 /// 从内存读取epub
 ///
@@ -861,7 +1022,11 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{common::tests::download_epub_file, epub::reader::read_meta_xml, prelude::*};
+    use crate::{
+        common::tests::download_epub_file,
+        epub::reader::{get_img_src, read_meta_xml},
+        prelude::*,
+    };
 
     use super::{is_epub, read_nav_xml};
 
@@ -1167,5 +1332,43 @@ html
             book.publisher().unwrap(),
             r#"Test Publisher `~!@#$%^&*()_+ and []\{}| and ;':" and ,./<>?"#
         );
+    }
+
+    #[test]
+    fn test_get_img_src() {
+        let html = r#"<div class="center" style="margin: 3.5em 0 0 0;">
+        <div class="illus duokan-image-single" style="text-align: center; padding: 0pt; margin: 0pt;">
+            <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 567 799" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">
+                <image height="799" width="567" xlink:href="../Images/cover.jpg"/>
+            </svg>
+        </div>
+    </div>"#;
+        let s = get_img_src(html.as_bytes(), "image", "xlink:href");
+        assert_ne!(None, s);
+        println!("{}", String::from_utf8(s.unwrap()).unwrap());
+
+        let html = r#"<div class="center" style="margin: 3.5em 0 0 0;">
+        <div class="illus duokan-image-single" style="text-align: center; padding: 0pt; margin: 0pt;">
+            <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 567 799" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">
+                <imagexlink:href="../Images/cover.jpg"/>
+            </svg>
+        </div>
+    </div>"#;
+        let s = get_img_src(html.as_bytes(), "image", "xlink:href");
+        assert_eq!(None, s);
+    }
+
+    #[test]
+    fn test_read_cover_from_guide() {
+        let name = if std::path::Path::new("target").exists() {
+            "target/cover_from_guide.epub"
+        } else {
+            "../target/cover_from_guide.epub"
+        };
+        let url = "https://github.com/user-attachments/files/23620295/05.zip";
+        download_epub_file(name, url);
+
+        let book = read_from_file(name).unwrap();
+        assert!(book.cover().is_some());
     }
 }
