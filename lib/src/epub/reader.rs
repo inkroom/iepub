@@ -1197,7 +1197,6 @@ html
         assert_ne!(0, nav.len());
         assert_ne!("", nav[0].title());
         let mut chap = book.chapters_mut();
-
         assert_eq!(75, chap.next().unwrap().data_mut().unwrap().len());
 
         // println!("{}", String::from_utf8( chap.next().unwrap().data().unwrap().to_vec()).unwrap());
@@ -1208,11 +1207,15 @@ html
             chap.next().unwrap().data_mut().unwrap().to_vec().len()
         );
 
+        for i in chap {
+            if let Some(p) = i.parser() {
+                assert_ne!(0, p.extract_plain_text().len());
+            }
+        }
         assert!(book.get_chapter("s04.xhtml#pgepubid00536").is_some());
         // assert!(chap.next().is_some());
         // chap.next();
         // chap.next();
-
         // assert_ne!("", chap.next().unwrap().title());
         // assert_ne!(None, book.chapters_mut().next().unwrap().data());
     }
