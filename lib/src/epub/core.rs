@@ -3,6 +3,9 @@ use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
+use quick_xml::events::Event;
+use quick_xml::Reader;
+
 use super::common::{self};
 use super::html::{get_html_info, to_html};
 use crate::cache_struct;
@@ -137,6 +140,17 @@ crate::cache_struct! {
     }
 }
 
+crate::cache_struct! {
+    /**
+     * 标注
+     */
+    #[derive(Debug, Clone)]
+    pub struct Annotation{
+        id:String,
+        text:String,
+    }
+}
+
 epub_base_field! {
     #[derive(Default, Clone)]
     pub struct EpubHtml {
@@ -152,6 +166,7 @@ epub_base_field! {
         pub(crate) direction: Option<Direction>,
         /// body 标签上的attribute
         pub(crate) body_attribute: Option<Vec<u8>>,
+        pub(crate) annotations: Option<Vec<Annotation>>,
     }
 }
 
@@ -181,6 +196,78 @@ impl EpubHtml {
 
     pub fn data(&self) -> Option<&[u8]> {
         self._data.as_deref()
+    }
+
+    fn get_annotation(&mut self, data: &Vec<u8>) -> Vec<Annotation> {
+        let mut annotations = Vec::new();
+        if let Ok(content) = String::from_utf8(data.to_vec()) {
+            let mut reader = quick_xml::reader::NsReader::from_str(&content);
+            reader.config_mut().trim_text(true);
+            let mut buf = Vec::new();
+            let mut in_annotation = false;
+            let mut current_text = String::new();
+            let mut data_id: Option<String> = None;
+            loop {
+                if let Ok(event) = reader.read_event_into(&mut buf) {
+                    match event {
+                        Event::Start(e) => {
+                            // 检测标注标签（如 <span class="annotation">）
+                            if e.name().as_ref() == b"span" {
+                                if let Some(attr) = e.attributes().find(|a| {
+                                    a.as_ref()
+                                        .map(|a| a.key == quick_xml::name::QName(b"class"))
+                                        .unwrap_or(false)
+                                }) {
+                                    if let Ok(attr) = attr {
+                                        let class_val = attr.unescape_value().unwrap_or_default();
+                                        if class_val.contains("annotation") {
+                                            in_annotation = true;
+                                            // 提取元数据标识（如 data-id）
+                                            data_id = e
+                                                .attributes()
+                                                .find(|a| {
+                                                    a.as_ref()
+                                                        .map(|a| {
+                                                            a.key
+                                                                == quick_xml::name::QName(
+                                                                    b"data-id",
+                                                                )
+                                                        })
+                                                        .unwrap_or(false)
+                                                })
+                                                .and_then(|a| {
+                                                    a.ok().map(|a| {
+                                                        a.unescape_value()
+                                                            .unwrap_or_default()
+                                                            .to_string()
+                                                    })
+                                                });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Event::Text(e) if in_annotation => {
+                            current_text.push_str(&e.decode().unwrap_or_default());
+                            // 累积标注文本
+                        }
+                        Event::End(e) if e.name().as_ref() == b"span" && in_annotation => {
+                            if let Some(id) = data_id.take() {
+                                annotations.push(Annotation {
+                                    id,
+                                    text: current_text.clone(),
+                                });
+                            }
+                            in_annotation = false;
+                        }
+                        Event::Eof => break,
+                        _ => {}
+                    }
+                }
+                buf.clear();
+            }
+        }
+        annotations
     }
 
     pub(crate) fn read_data(&mut self, reader: &mut impl EpubReaderTrait) {
@@ -214,6 +301,7 @@ impl EpubHtml {
                             if !title.is_empty() {
                                 self.set_title(&title);
                             }
+                            self.get_annotation(&content);
                             self.set_data(content);
                             if let Some(lang) = language {
                                 self.set_language(lang);
@@ -273,6 +361,7 @@ impl EpubHtml {
                             if !title.is_empty() {
                                 self.set_title(&title);
                             }
+                            self.get_annotation(&content);
                             self.set_data(content);
                             if let Some(lang) = language {
                                 self.set_language(lang);
@@ -301,6 +390,10 @@ impl EpubHtml {
             data.clear();
         }
         self._data = None;
+    }
+
+    pub fn annotation(&self) -> Option<Vec<Annotation>> {
+        self.annotations.clone()
     }
 
     pub fn format(&mut self) -> Option<String> {

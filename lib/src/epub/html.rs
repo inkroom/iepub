@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use super::common;
-use crate::{common::get_media_type, prelude::*};
+use crate::{common::get_media_type, epub::core::Annotation, prelude::*};
 use quick_xml::events::Event;
 
 /// 生成html
