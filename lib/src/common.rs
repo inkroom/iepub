@@ -209,11 +209,11 @@ impl ContentItem {
         let mut result = format!("{}[{:?}]", indent_str, self.content_type);
 
         if !self.text.is_empty() {
-            result.push_str(&format!(" 文本: \"{}\"", self.text.trim()));
+            result.push_str(&format!(" text: \"{}\"", self.text.trim()));
         }
 
         if !self.attributes.is_empty() {
-            result.push_str(" 属性: {");
+            result.push_str(" attribute: {");
             for (i, (key, value)) in self.attributes.iter().enumerate() {
                 if i > 0 {
                     result.push_str(", ");

@@ -45,8 +45,13 @@ impl HtmlParser {
                     // 如果没有 body 标签，且不是 html/head 标签，则开始解析
                     if !has_body_tag && depth > 0 {
                         let lower_tag = tag_name.to_lowercase();
-                        if lower_tag != "html" && lower_tag != "head" && lower_tag != "meta" 
-                            && lower_tag != "title" && lower_tag != "link" && lower_tag != "style" {
+                        if lower_tag != "html"
+                            && lower_tag != "head"
+                            && lower_tag != "meta"
+                            && lower_tag != "title"
+                            && lower_tag != "link"
+                            && lower_tag != "style"
+                        {
                             in_body = true;
                         }
                     }
@@ -197,15 +202,6 @@ impl HtmlParser {
         }
     }
 
-    /// 打印解析结果
-    pub fn print_result(&self) {
-        println!("=== 解析结果 ===\n");
-        for (i, item) in self.items.iter().enumerate() {
-            println!("--- 内容项 {} ---", i + 1);
-            print!("{}", item.format(0));
-        }
-    }
-
     /// 提取所有段落文本
     pub fn extract_paragraphs(&self) -> Vec<String> {
         let mut paragraphs = Vec::new();
@@ -302,21 +298,21 @@ mod tests {
 
         let mut parser = HtmlParser::new();
         parser.parse(html).unwrap();
-        
+
         println!("解析到 {} 个顶层元素", parser.items.len());
         assert!(parser.items.len() > 0, "应该解析到至少一个元素");
-        
+
         let paragraphs = parser.extract_paragraphs();
         println!("提取到 {} 个段落", paragraphs.len());
         assert_eq!(paragraphs.len(), 2, "应该提取到 2 个段落");
-        
+
         let headings = parser.extract_headings();
         println!("提取到 {} 个标题", headings.len());
         assert_eq!(headings.len(), 1, "应该提取到 1 个标题");
         assert_eq!(headings[0].0, 3, "标题级别应该是 3");
         assert_eq!(headings[0].1, "INTRODUCTORY", "标题内容应该是 INTRODUCTORY");
     }
-    
+
     #[test]
     fn test_parse_html_with_body_tag() {
         // 测试有 body 标签的 HTML
@@ -331,10 +327,10 @@ mod tests {
         parser.parse(html).unwrap();
         
         assert!(parser.items.len() > 0);
-        
+
         let paragraphs = parser.extract_paragraphs();
         assert_eq!(paragraphs.len(), 1);
-        
+
         let headings = parser.extract_headings();
         assert_eq!(headings.len(), 1);
         assert_eq!(headings[0].0, 1);
