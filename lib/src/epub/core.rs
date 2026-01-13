@@ -9,6 +9,7 @@ use crate::cache_struct;
 use crate::common::{escape_xml, urldecode_enhanced, IError, IResult};
 use crate::epub::common::LinkRel;
 use crate::epub::html;
+use crate::parser::HtmlParser;
 crate::cache_enum! {
     #[derive(Clone)]
     pub enum Direction {
@@ -171,8 +172,11 @@ impl Debug for EpubHtml {
 }
 
 impl EpubHtml {
-    pub fn string_data(&self) -> String {
-        if let Some(data) = &self._data {
+    pub fn string_data(&mut self) -> String {
+        if self._data.is_none() {
+            self.data_mut();
+        }
+        if let Some(data) = &mut self._data {
             String::from_utf8(data.clone()).unwrap_or_else(|_e| String::new())
         } else {
             String::new()
@@ -181,6 +185,18 @@ impl EpubHtml {
 
     pub fn data(&self) -> Option<&[u8]> {
         self._data.as_deref()
+    }
+
+    pub fn parser(&mut self) -> Option<HtmlParser> {
+        let mut obj = None;
+        let html = self.string_data();
+        if !html.is_empty() {
+            let mut parser = HtmlParser::new();
+            if parser.parse(&html).is_ok() {
+                obj = Some(parser);
+            }
+        }
+        obj
     }
 
     pub(crate) fn read_data(&mut self, reader: &mut impl EpubReaderTrait) {

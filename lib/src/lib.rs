@@ -3,10 +3,11 @@
 #[allow(clippy::needless_range_loop)]
 extern crate iepub_derive;
 mod adapter;
-mod common;
+pub mod common;
 mod cover;
 mod epub;
 mod mobi;
+pub mod parser;
 pub mod path;
 pub use crate::common::DateTimeFormater;
 

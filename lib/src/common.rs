@@ -139,6 +139,100 @@ impl From<FromUtf8Error> for IError {
         IError::Utf8(value)
     }
 }
+
+/// 内容类型枚举
+#[derive(Debug, Clone)]
+pub enum ContentType {
+    /// 段落
+    Paragraph,
+    /// 标题 (level: 1-6)
+    Heading(u8),
+    /// 图片
+    Image,
+    /// 链接
+    Link,
+    /// 列表项
+    ListItem,
+    /// 引用块
+    BlockQuote,
+    /// 代码块
+    CodeBlock,
+    /// 分隔线
+    HorizontalRule,
+    /// 普通文本
+    Text,
+    /// 其他标签
+    Other(String),
+}
+
+/// 解析后的内容项
+#[derive(Debug, Clone)]
+pub struct ContentItem {
+    /// 内容类型
+    pub content_type: ContentType,
+    /// 文本内容
+    pub text: String,
+    /// 属性 (例如图片的 src, 链接的 href 等)
+    pub attributes: Vec<(String, String)>,
+    /// 子内容
+    pub children: Vec<ContentItem>,
+}
+
+impl ContentItem {
+    pub fn new(content_type: ContentType) -> Self {
+        Self {
+            content_type,
+            text: String::new(),
+            attributes: Vec::new(),
+            children: Vec::new(),
+        }
+    }
+
+    /// 添加属性
+    pub fn add_attribute(&mut self, key: String, value: String) {
+        self.attributes.push((key, value));
+    }
+
+    /// 添加子内容
+    pub fn add_child(&mut self, child: ContentItem) {
+        self.children.push(child);
+    }
+
+    /// 添加文本
+    pub fn add_text(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    /// 格式化输出
+    pub fn format(&self, indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        let mut result = format!("{}[{:?}]", indent_str, self.content_type);
+
+        if !self.text.is_empty() {
+            result.push_str(&format!(" 文本: \"{}\"", self.text.trim()));
+        }
+
+        if !self.attributes.is_empty() {
+            result.push_str(" 属性: {");
+            for (i, (key, value)) in self.attributes.iter().enumerate() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                result.push_str(&format!("{}: \"{}\"", key, value));
+            }
+            result.push('}');
+        }
+
+        result.push('\n');
+
+        for child in &self.children {
+            result.push_str(&child.format(indent + 1));
+        }
+
+        result
+    }
+}
+
 cache_struct! {
     #[derive(Debug, Default)]
     pub(crate) struct BookInfo {
