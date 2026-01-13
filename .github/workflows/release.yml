@@ -46,6 +46,7 @@ jobs:
           ref: ${{github.ref }}
       - name: Ready
         run: |
+          git config --global --add safe.directory $(pwd)
           git --no-pager log | head -n 5
           rm -rf ${CARGO_HOME}/config.toml && cd / && apt update -y && apt install -y libssl-dev pkg-config fonts-wqy-zenhei
       - uses: dtolnay/rust-toolchain@stable
@@ -107,9 +108,10 @@ jobs:
         id: v
         run: |
           echo NOW_RELEASE=$(git --no-pager tag | grep ${{ needs.check.outputs.NEXT_VERSION }} | sed 's@v@@') >> $GITHUB_OUTPUT
+          RUST_VERSION=$(curl -sL  https://api.github.com/repos/rust-lang/rust/tags | jq -c --raw-output 'map(select(.name | startswith("release") | not)) | sort_by(.name) | reverse | .[0].name ')
+          echo RUST_VERSION="x86_64-musl-stable-$RUST_VERSION" >> $GITHUB_OUTPUT
       - name: Docker Build
         uses: docker/build-push-action@v5
-        if: needs.check.outputs.NEXT_VERSION != steps.v.outputs.NOW_RELEASE
         id: docker_id
         with:
           context: .
@@ -117,8 +119,9 @@ jobs:
           load: true
           push: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          build-args: |
+            TAG=${{ steps.v.outputs.RUST_VERSION }}
       - name: Extract Docker Image
-        if: needs.check.outputs.NEXT_VERSION != steps.v.outputs.NOW_RELEASE
         id: ex
         run: |
           sed -ex

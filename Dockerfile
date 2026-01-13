@@ -1,4 +1,5 @@
-FROM ghcr.io/inkroomtemp/rust_musl_build:1.85.0
+ARG TAG=x86_64-musl-stable-1.92.0
+FROM blackdex/rust-musl:${TAG}
 RUN cargo new app
 
 WORKDIR /workdir/app
