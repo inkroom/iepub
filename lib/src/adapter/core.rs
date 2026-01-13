@@ -463,7 +463,7 @@ pub mod concat {
             let f = ele
                 .data_mut()
                 .map(|f| f.to_vec())
-                .expect(format!("{} not exist", ele.file_name()).as_str());
+                .unwrap_or_else(|| panic!("{} not exist", ele.file_name()));
             asset_len += 1;
 
             let sufix = ele.file_name().find('.').unwrap_or(0);

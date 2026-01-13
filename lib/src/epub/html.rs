@@ -61,15 +61,10 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool, dir: &Option<Dire
 {body}
   </body>
 </html>"#,
-        if let Some(v) = chap
+        chap
             .body_attribute
             .as_ref()
-            .and_then(|f| String::from_utf8(f.clone()).ok())
-        {
-            v
-        } else {
-            String::new()
-        },
+            .and_then(|f| String::from_utf8(f.clone()).ok()).unwrap_or_default(),
         if append_title {
             format!(r#"<h1 style="text-align: center">{}</h1>"#, title)
         } else {

@@ -627,7 +627,7 @@ fn hex_char_to_value(c: char) -> IResult<u8> {
 ///    font-family: Arial;
 /// }
 /// ```
-pub fn get_css_content_url<'a, T: AsRef<str> + ?Sized>(css: &'a T) -> Vec<&'a str> {
+pub fn get_css_content_url<T: AsRef<str> + ?Sized>(css: &T) -> Vec<&str> {
     let mut res = Vec::new();
 
     let line = css.as_ref().split("\n").collect::<Vec<&str>>();

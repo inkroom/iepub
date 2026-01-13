@@ -121,7 +121,7 @@ fn read_book(file: &str) -> IResult<OwnBook> {
 }
 
 pub(crate) mod epub {
-    use std::collections::HashMap;
+    
     use std::vec;
 
     use crate::cli::arg::OptUtil;
@@ -981,6 +981,7 @@ pub(crate) mod epub {
         ) {
             use md5::Digest;
             use md5::Md5;
+            use std::collections::HashMap;
             if let Book::EPUB(book) = book {
                 let mut hash_map: HashMap<String, String> = HashMap::new();
                 let mut need_replace = HashMap::new();

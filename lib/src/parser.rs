@@ -8,6 +8,12 @@ pub struct HtmlParser {
     pub items: Vec<ContentItem>,
 }
 
+impl Default for HtmlParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HtmlParser {
     pub fn new() -> Self {
         Self { items: Vec::new() }
@@ -66,15 +72,13 @@ impl HtmlParser {
                     let mut item = ContentItem::new(content_type);
 
                     // 提取属性
-                    for attr_result in e.attributes() {
-                        if let Ok(attr) = attr_result {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                            let value = attr
-                                .unescape_value()
-                                .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""))
-                                .to_string();
-                            item.add_attribute(key, value);
-                        }
+                    for attr in e.attributes().flatten() {
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let value = attr
+                            .unescape_value()
+                            .unwrap_or(std::borrow::Cow::Borrowed(""))
+                            .to_string();
+                        item.add_attribute(key, value);
                     }
 
                     stack.push(item);
@@ -133,15 +137,13 @@ impl HtmlParser {
                     let mut item = ContentItem::new(content_type);
 
                     // 提取属性 (对 img, br, hr 等自闭合标签很重要)
-                    for attr_result in e.attributes() {
-                        if let Ok(attr) = attr_result {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                            let value = attr
-                                .unescape_value()
-                                .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""))
-                                .to_string();
-                            item.add_attribute(key, value);
-                        }
+                    for attr in e.attributes().flatten() {
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let value = attr
+                            .unescape_value()
+                            .unwrap_or(std::borrow::Cow::Borrowed(""))
+                            .to_string();
+                        item.add_attribute(key, value);
                     }
 
                     if let Some(parent) = stack.last_mut() {
@@ -211,13 +213,10 @@ impl HtmlParser {
 
     fn extract_paragraphs_recursive(&self, items: &[ContentItem], result: &mut Vec<String>) {
         for item in items {
-            match item.content_type {
-                ContentType::Paragraph => {
-                    if !item.text.trim().is_empty() {
-                        result.push(item.text.trim().to_string());
-                    }
+            if let ContentType::Paragraph = item.content_type {
+                if !item.text.trim().is_empty() {
+                    result.push(item.text.trim().to_string());
                 }
-                _ => {}
             }
             // 递归处理子元素
             self.extract_paragraphs_recursive(&item.children, result);
