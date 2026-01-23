@@ -721,7 +721,7 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                 b"a" if in_toc_nav => {
                     if let Some(href) = e
                         .attributes()
-                        .find(|a| a.as_ref().unwrap().key.as_ref() == b"href")
+                        .find(|a| a.as_ref().map(|a| a.key.0 == b"href").unwrap_or(false))
                     {
                         let mut href = String::from_utf8_lossy(&href.unwrap().value).to_string();
                         if !href.starts_with(&root_path) {
@@ -733,9 +733,9 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                 b"span" => {
                     if let Some(class) = e
                         .attributes()
-                        .find(|a| a.as_ref().unwrap().key.as_ref() == b"class")
+                        .find(|a| a.as_ref().map(|a| a.key.0 == b"class").unwrap_or(false))
                     {
-                        if class.unwrap().value.as_ref() == b"toc-label" {
+                        if class.as_ref().map(|a| &*a.value == b"toc-label").unwrap_or(false) {
                             in_label = true
                         }
                     }
@@ -791,8 +791,11 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
 
 fn has_epub_type(e: &BytesStart, value: &str) -> bool {
     e.attributes().any(|a| {
-        let attr = a.as_ref().unwrap();
-        attr.key.as_ref() == b"epub:type" && attr.value.as_ref() == value.as_bytes()
+        if let Ok(attr) = a {
+            attr.key.0 == b"epub:type" && &*attr.value == value.as_bytes()
+        } else {
+            false
+        }
     })
 }
 
@@ -1278,7 +1281,7 @@ html
             .metadata("h", "m")
             .file(f)
             .unwrap();
-        let mut book = read_from_file(f).unwrap();
+        let book = read_from_file(f).unwrap();
         assert_eq!(1, book.nav().len());
         assert_eq!(
             "1. Test Title `~!@#$%^&*()_+ and []\\{}| and2 ;':\" and3 ,./<>?",
