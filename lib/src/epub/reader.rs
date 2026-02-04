@@ -206,8 +206,6 @@ fn read_meta_xml(
                 if !parent.is_empty() && parent[parent.len() - 1] == name {
                     parent.remove(parent.len() - 1);
                 }
-
-                // println!("end {}",String::from_utf8(e.name().as_ref().to_vec()).unwrap());
             }
             _ => {}
         }

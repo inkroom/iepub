@@ -448,7 +448,6 @@ impl EpubAssets {
 
     pub fn data_mut(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
-        println!("reader {:?}",self.reader.is_some());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
             let prefixs = ["", common::EPUB, common::EPUB3];
             if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
