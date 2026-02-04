@@ -62,9 +62,9 @@ macro_rules! epub_base_field{
                 $(#[$meta])*
                 pub struct $struct_name{
 
-                    id:String,
-                    _file_name:String,
-                    media_type:String,
+                    pub(crate) id:String,
+                    pub(crate) _file_name:String,
+                    pub(crate) media_type:String,
                     _data: Option<Vec<u8>>,
                     #[cfg(not(feature="cache"))]
                     reader:Option<std::sync::Arc<std::sync::Mutex< Box<dyn EpubReaderTrait+Send+Sync>>>>,
@@ -448,6 +448,7 @@ impl EpubAssets {
 
     pub fn data_mut(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
+        println!("reader {:?}",self.reader.is_some());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
             let prefixs = ["", common::EPUB, common::EPUB3];
             if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
@@ -913,7 +914,10 @@ impl EpubBook {
         self.nav.iter()
     }
 
-    pub fn set_cover(&mut self, cover: EpubAssets) {
+    pub fn set_cover(&mut self, mut cover: EpubAssets) {
+        if let Some(r) = &self.reader {
+            cover.reader = Some(Arc::clone(r));
+        }
         self.cover = Some(cover);
     }
 
