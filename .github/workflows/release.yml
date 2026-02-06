@@ -16,11 +16,26 @@ jobs:
     outputs:
       rust: ${{ steps.v.outputs.rust }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: ${{ github.event_name == 'push' }}
+        with:
+         fetch-depth: 0
+      - name: Checkout PR
+        uses: actions/checkout@v5
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          fetch-depth: 0
+          ref: ${{github.ref }}
       - name: Rust Version
         id: v
         run: |
-          # 最近6个rust版本
-          version=$(curl -sL  https://api.github.com/repos/rust-lang/rust/tags | jq -c --raw-output 'map(select(.name | startswith("release") | not)) | sort_by(.name) | reverse | .[:6] | [.[].name]')
+          # 支持的所有rust版本
+          min_version=$(grep "rust-version" Cargo.toml | sed 's@.*"\(.*\)"@\1@')
+          echo "min_version=$min_version"
+          versions=$(curl -sL  https://api.github.com/repos/rust-lang/rust/tags | jq -c --raw-output 'map(select(.name | startswith("release") | not)) | sort_by(.name) | reverse | [.[].name]')
+          echo "$versions"
+          version=$(echo "$versions" | jq -c --arg target "$min_version" 'map(select( split(".") as $v | $target | split(".") as $t | ($v[0] | tonumber) > ($t[0] | tonumber) or ($v[0] | tonumber) == ($t[0] | tonumber) and ($v[1] | tonumber) > ($t[1] | tonumber) or ($v[0] | tonumber) == ($t[0] | tonumber) and ($v[1] | tonumber) == ($t[1] | tonumber) and ($v[2] | tonumber) >= ($t[2] | tonumber) ))')
           echo "$version"
           echo "rust=$version" >> $GITHUB_OUTPUT
   test:
