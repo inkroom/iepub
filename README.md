@@ -5,6 +5,8 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/inkroom/iepub/release.yml?label=CI)
 [![Crates.io version](https://img.shields.io/crates/v/iepub.svg)](https://crates.io/crates/iepub)
 
+[English](https://github.com/inkroom/iepub/blob/master/README_EN.md)
+
 ## EPUB
 
 支持从文件和内存读取和生成EPUB电子书
