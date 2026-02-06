@@ -206,8 +206,6 @@ fn read_meta_xml(
                 if !parent.is_empty() && parent[parent.len() - 1] == name {
                     parent.remove(parent.len() - 1);
                 }
-
-                // println!("end {}",String::from_utf8(e.name().as_ref().to_vec()).unwrap());
             }
             _ => {}
         }
@@ -382,20 +380,40 @@ fn read_manifest_xml(
                 match e.name().as_ref() {
                     b"item" => {
                         let mut a = EpubAssets::default();
-                        if let Ok(href) = e.try_get_attribute("href") {
-                            if let Some(h) = href.map(|f| {
-                                f.unescape_value()
-                                    .map_or_else(|_| String::new(), |v| v.to_string())
-                            }) {
-                                a.set_file_name(h.as_str());
+                        let mut is_cover = false;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"href" => {
+                                    let h = attr.unescape_value().unwrap_or_default().to_string();
+                                    a.set_file_name(h.as_str());
+                                }
+                                b"id" => {
+                                    let h = attr.unescape_value().unwrap_or_default().to_string();
+                                    if h.eq_ignore_ascii_case("cover") {
+                                        is_cover = true;
+                                    }
+                                    a.set_id(h.as_str());
+                                }
+                                b"media-type" => {
+                                    let h = attr.unescape_value().unwrap_or_default().to_string();
+                                    a.media_type = h;
+                                }
+                                b"properties" => {
+                                    let h = attr.unescape_value().unwrap_or_default().to_string();
+                                    if h.split_whitespace().any(|s| s == "cover-image") {
+                                        is_cover = true;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
-                        if let Ok(href) = e.try_get_attribute("id") {
-                            if let Some(h) = href.map(|f| {
-                                f.unescape_value()
-                                    .map_or_else(|_| String::new(), |v| v.to_string())
-                            }) {
-                                a.set_id(h.as_str());
+
+                        if is_cover {
+                            let href = a.file_name();
+                            if href.ends_with(".xhtml") || href.ends_with(".html") {
+                                book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                            } else if a.media_type.starts_with("image/") {
+                                book.set_cover(a.clone());
                             }
                         }
                         assets.push(a);
@@ -721,7 +739,7 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                 b"a" if in_toc_nav => {
                     if let Some(href) = e
                         .attributes()
-                        .find(|a| a.as_ref().unwrap().key.as_ref() == b"href")
+                        .find(|a| a.as_ref().map(|a| a.key.0 == b"href").unwrap_or(false))
                     {
                         let mut href = String::from_utf8_lossy(&href.unwrap().value).to_string();
                         if !href.starts_with(&root_path) {
@@ -733,9 +751,9 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                 b"span" => {
                     if let Some(class) = e
                         .attributes()
-                        .find(|a| a.as_ref().unwrap().key.as_ref() == b"class")
+                        .find(|a| a.as_ref().map(|a| a.key.0 == b"class").unwrap_or(false))
                     {
-                        if &*class.unwrap().value == b"toc-label" {
+                        if class.as_ref().map(|a| &*a.value == b"toc-label").unwrap_or(false) {
                             in_label = true
                         }
                     }
@@ -791,8 +809,11 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
 
 fn has_epub_type(e: &BytesStart, value: &str) -> bool {
     e.attributes().any(|a| {
-        let attr = a.as_ref().unwrap();
-        attr.key.as_ref() == b"epub:type" && &*attr.value == value.as_bytes()
+        if let Ok(attr) = a {
+            attr.key.0 == b"epub:type" && &*attr.value == value.as_bytes()
+        } else {
+            false
+        }
     })
 }
 
@@ -884,6 +905,7 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
                 // 查找第一个img标签，然后找到对应的文件
                 if let Some(cover) = get_img_src(co.0, "img", "src")
                     .or_else(|| get_img_src(co.0, "image", "xlink:href"))
+                    .or_else(|| get_img_src(co.0, "image", "href"))
                     .and_then(|f| String::from_utf8(f).ok())
                     .map(|src| crate::path::Path::system(co.1).pop().join(src).to_str())
                     .and_then(|img| book.assets().find(|f| f.file_name() == img.as_str()))
@@ -892,6 +914,7 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
                 }
             }
         }
+        book.update_chapter();
         book.update_assets();
 
         Ok(())
@@ -938,41 +961,28 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
 
 /// 获取img的src值
 pub(crate) fn get_img_src(html: &[u8], tag: &str, attribute: &str) -> Option<Vec<u8>> {
-    let mut index: usize = 0;
-    let chars = html;
+    use quick_xml::events::Event;
+    use quick_xml::reader::Reader;
 
-    let tag = format!("<{tag} ");
-    let key = tag.as_bytes();
-
-    while index < chars.len() {
-        let mut now = chars[index];
-        let mut j = 0;
-        while j < key.len() {
-            if now == key[j] {
-                now = chars[index + j + 1];
-            } else {
-                break;
+    let mut reader = Reader::from_reader(html);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                if e.name().as_ref().eq_ignore_ascii_case(tag.as_bytes()) {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref().eq_ignore_ascii_case(attribute.as_bytes()) {
+                            return Some(attr.value.to_vec());
+                        }
+                    }
+                }
             }
-            j += 1;
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
         }
-        if j == key.len() {
-            // 找到 img 标签，接下来查找 src 属性
-            index += j;
-            // 查找完后数据被分成三段，第一段 为开头到 src=，第二段是src=到value结束，第三段是value结束到之后
-            // 第一段原样添加，第二段如果找到值替换recindex，没找到则原样添加，第三段继续循环
-
-            let att = crate::mobi::image::get_attr_value(
-                &chars[index..],
-                format!("{attribute}=").as_str(),
-            );
-            if let Some(v) = att.0 {
-                return Some(v);
-            }
-
-            index += att.1;
-        } else {
-            index += 1;
-        }
+        buf.clear();
     }
 
     None
@@ -1016,6 +1026,7 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use crate::{
         common::tests::download_epub_file,
         epub::reader::{get_img_src, read_meta_xml},
@@ -1161,9 +1172,9 @@ html
                 name,
                 "https://github.com/user-attachments/files/19544787/epub-book.epub.zip",
             )
-            .as_str(),
+                .as_str(),
         )
-        .unwrap();
+            .unwrap();
 
         let nav = book.nav().as_slice();
 
@@ -1181,7 +1192,7 @@ html
     #[test]
     fn test_read_epub3() {
         let name = "../target/epub3.epub";
-        let url =  "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub";
+        let url = "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub";
         download_epub_file(name, url);
 
         let mut book = read_from_file(name).unwrap();
@@ -1234,15 +1245,15 @@ html
                     .unwrap()
                     .to_vec()
             )
-            .unwrap()
-            .len()
+                .unwrap()
+                .len()
         );
     }
     /// 测试epub3的读取资源文件
     #[test]
     fn test_read_epub3_assets() {
         let name = "../target/epub3.epub";
-        let url =  "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub";
+        let url = "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub";
         download_epub_file(name, url);
 
         let mut book = read_from_file(name).unwrap();
@@ -1278,7 +1289,7 @@ html
             .metadata("h", "m")
             .file(f)
             .unwrap();
-        let mut book = read_from_file(f).unwrap();
+        let book = read_from_file(f).unwrap();
         assert_eq!(1, book.nav().len());
         assert_eq!(
             "1. Test Title `~!@#$%^&*()_+ and []\\{}| and2 ;':\" and3 ,./<>?",
