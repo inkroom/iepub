@@ -735,7 +735,7 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                         .attributes()
                         .find(|a| a.as_ref().unwrap().key.as_ref() == b"class")
                     {
-                        if class.unwrap().value.as_ref() == b"toc-label" {
+                        if &*class.unwrap().value == b"toc-label" {
                             in_label = true
                         }
                     }
@@ -792,7 +792,7 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
 fn has_epub_type(e: &BytesStart, value: &str) -> bool {
     e.attributes().any(|a| {
         let attr = a.as_ref().unwrap();
-        attr.key.as_ref() == b"epub:type" && attr.value.as_ref() == value.as_bytes()
+        attr.key.as_ref() == b"epub:type" && &*attr.value == value.as_bytes()
     })
 }
 
