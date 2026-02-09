@@ -674,7 +674,7 @@ pub mod concat {
                     .with_title("1.1")
                     .with_file_name("1/1.xhtml"),
             );
-            let mut builder = EpubBuilder::new()
+            let builder = EpubBuilder::new()
                 .custome_nav(true)
                 .with_title("测试合并")
                 .with_creator("作者")
@@ -706,7 +706,7 @@ pub mod concat {
                     .with_title("3.1")
                     .with_file_name("2/1.xhtml"),
             );
-            let mut builder = EpubBuilder::new()
+            let builder = EpubBuilder::new()
                 .custome_nav(true)
                 .with_title("测试合并2")
                 .with_creator("作者2")
@@ -730,11 +730,11 @@ pub mod concat {
                 );
             let mut book2 = builder.book().unwrap();
 
-            let mut builder = EpubBuilder::default();
-            let (mut builder, len, a_len) =
+            let builder = EpubBuilder::default();
+            let (builder, len, a_len) =
                 add_into_epub(builder, &mut book1, 0, 0, 0, None, &[]).unwrap();
 
-            let (mut builder, len, a_len) =
+            let (builder, _, _) =
                 add_into_epub(builder, &mut book2, len, a_len, 0, None, &[]).unwrap();
 
             let b = builder.book().unwrap();
@@ -859,13 +859,13 @@ mod tests {
         let assets = vec![
             MobiAssets {
                 _file_name: "1.jpg".to_string(),
-                media_type: String::new(),
+                _media_type: String::new(),
                 _data: None,
                 recindex: 55,
             },
             MobiAssets {
                 _file_name: "2.jpg".to_string(),
-                media_type: String::new(),
+                _media_type: String::new(),
                 _data: None,
                 recindex: 56,
             },

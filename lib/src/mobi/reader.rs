@@ -538,7 +538,7 @@ impl<T: Read + Seek> MobiReader<T> {
 
                 MobiAssets {
                     _file_name: format!("{}.{}", f, get_suffix(image.as_slice())),
-                    media_type: String::new(),
+                    _media_type: String::new(),
                     _data: Some(image),
                     recindex: *f,
                 }

@@ -157,7 +157,7 @@ pub(crate) struct NavFilePos {
     /// 占位符长度
     pub(crate) length: usize,
     /// 对应的nav id
-    id: usize,
+    _id: usize,
     /// 对应的章节id
     pub(crate) chap_id: usize,
     pub(crate) child: Vec<NavFilePos>,
@@ -189,7 +189,7 @@ fn generate_human_nav_item_xml(start: usize, nav: &[MobiNav]) -> (Vec<u8>, Vec<N
         let mut file_pos = NavFilePos {
             index: start + text.len(),
             length: len,
-            id: ele.id(),
+            _id: ele.id(),
             child: Vec::new(),
             chap_id: ele.chap_id,
         };
@@ -476,7 +476,7 @@ impl<'a> FilePosAttr for BytesStart<'a> {
 mod tests {
     use std::{
         collections::HashMap,
-        sync::atomic::{AtomicBool, AtomicUsize},
+        sync::atomic:: AtomicUsize,
     };
 
     use quick_xml::events::BytesStart;

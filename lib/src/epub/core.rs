@@ -325,7 +325,7 @@ impl EpubHtml {
     }
 
     pub fn raw_data(&mut self) -> Option<&str> {
-        let (id, origin) = if let Some(index) = self._file_name.find('#') {
+        let (_, origin) = if let Some(index) = self._file_name.find('#') {
             (
                 Some(&self._file_name[(index + 1)..]),
                 self._file_name[0..index].to_string(),
@@ -411,7 +411,7 @@ impl EpubHtml {
         self
     }
 
-    fn get_links(&mut self) -> Option<&mut Vec<EpubLink>> {
+    pub fn get_links(&mut self) -> Option<&mut Vec<EpubLink>> {
         self.links.as_mut()
     }
 

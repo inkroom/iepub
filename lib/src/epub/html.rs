@@ -61,10 +61,10 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool, dir: &Option<Dire
 {body}
   </body>
 </html>"#,
-        chap
-            .body_attribute
+        chap.body_attribute
             .as_ref()
-            .and_then(|f| String::from_utf8(f.clone()).ok()).unwrap_or_default(),
+            .and_then(|f| String::from_utf8(f.clone()).ok())
+            .unwrap_or_default(),
         if append_title {
             format!(r#"<h1 style="text-align: center">{}</h1>"#, title)
         } else {
@@ -367,7 +367,7 @@ pub(crate) fn do_to_opf(book: &mut EpubBook, generator: &str) -> IResult<String>
     }
     xml.write_event(Event::Start(spine.borrow()))?;
     // 把封面放第一个 nav，导航第二个
-    if let Some(co) = book.cover_chapter() {
+    if let Some(_) = book.cover_chapter() {
         xml.create_element("itemref")
             .with_attribute(("idref", "cover"))
             .write_empty()?;

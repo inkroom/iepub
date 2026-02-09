@@ -319,8 +319,8 @@ impl EXTHHeader {
 }
 
 struct PDBRecord {
-    index: usize,
-    magic: Option<String>,
+    _index: usize,
+    _magic: Option<String>,
     data: Vec<u8>,
 }
 /// 从字节开头查找是否有合法的utf8字符，有一个即可返回true，即便后面的字节可能不合法
@@ -510,8 +510,8 @@ impl<T: Write + Seek> MobiWriter<T> {
             .flat_map(|f| f.data())
             .enumerate()
             .map(|(index, f)| PDBRecord {
-                index,
-                magic: None,
+                _index:index,
+                _magic: None,
                 data: f.to_vec(),
             })
             .collect()
@@ -642,8 +642,8 @@ impl<T: Write + Seek> MobiWriter<T> {
 
             all_text_len += data.len();
             res.push(PDBRecord {
-                index: res.len(),
-                magic: None,
+                _index: res.len(),
+                _magic: None,
                 data,
             });
         }
@@ -653,8 +653,8 @@ impl<T: Write + Seek> MobiWriter<T> {
         let mut first_non_text_record_idx = res.len() + 1;
         if all_text_len % 4 != 0 {
             res.push(PDBRecord {
-                index: last_text_record_idx,
-                magic: None,
+                _index: last_text_record_idx,
+                _magic: None,
                 data: (0..(all_text_len % 4)).map(|_| 0).collect(),
             });
             first_non_text_record_idx += 1;
@@ -759,8 +759,8 @@ impl<T: Write + Seek> MobiWriter<T> {
         if let Some(cover) = book.cover() {
             // 封面始终保持在第一个
             assets.push(PDBRecord {
-                index: assets.len() + text.len(),
-                magic: None,
+                _index: assets.len() + text.len(),
+                _magic: None,
                 data: cover.data().as_ref().unwrap().to_vec(),
             });
         }

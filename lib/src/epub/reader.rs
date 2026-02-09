@@ -226,37 +226,39 @@ fn read_guide_xml(
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => if e.name().as_ref() == b"reference" {
-                // <reference href="cover.xhtml" title="cover" type="cover"/>
-                // 读取封面页的时候，不一定已经获取到了章节
-                if let Some(_t) = e
-                    .try_get_attribute("type")
-                    .ok()
-                    .and_then(|f| f)
-                    .map(|f| {
-                        f.unescape_value()
-                            .map_or_else(|_| String::new(), |v| v.to_string())
-                    })
-                    .filter(|f| f == "cover")
-                {
-                    if let Some(href) =
-                        e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+            Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"reference" {
+                    // <reference href="cover.xhtml" title="cover" type="cover"/>
+                    // 读取封面页的时候，不一定已经获取到了章节
+                    if let Some(_t) = e
+                        .try_get_attribute("type")
+                        .ok()
+                        .and_then(|f| f)
+                        .map(|f| {
                             f.unescape_value()
                                 .map_or_else(|_| String::new(), |v| v.to_string())
                         })
+                        .filter(|f| f == "cover")
                     {
-                        book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                        if let Some(href) =
+                            e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+                                f.unescape_value()
+                                    .map_or_else(|_| String::new(), |v| v.to_string())
+                            })
+                        {
+                            book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                        }
+                        break;
                     }
-                    break;
                 }
-            },
+            }
             Ok(Event::Empty(e)) => {
                 match e.name().as_ref() {
                     b"reference" => {
                         // <reference href="cover.xhtml" title="cover" type="cover"/>
                         // 读取封面页的时候，不一定已经获取到了章节
 
-                        if let Some(t) = e
+                        if let Some(_) = e
                             .try_get_attribute("type")
                             .ok()
                             .and_then(|f| f)
@@ -282,9 +284,11 @@ fn read_guide_xml(
                     }
                 }
             }
-            Ok(Event::End(e)) => if e.name().as_ref() == b"guide" {
-                break;
-            },
+            Ok(Event::End(e)) => {
+                if e.name().as_ref() == b"guide" {
+                    break;
+                }
+            }
 
             Ok(Event::Eof) => {
                 break;
@@ -753,7 +757,11 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                         .attributes()
                         .find(|a| a.as_ref().map(|a| a.key.0 == b"class").unwrap_or(false))
                     {
-                        if class.as_ref().map(|a| &*a.value == b"toc-label").unwrap_or(false) {
+                        if class
+                            .as_ref()
+                            .map(|a| &*a.value == b"toc-label")
+                            .unwrap_or(false)
+                        {
                             in_label = true
                         }
                     }
@@ -1026,7 +1034,6 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use crate::{
         common::tests::download_epub_file,
         epub::reader::{get_img_src, read_meta_xml},
@@ -1172,9 +1179,9 @@ html
                 name,
                 "https://github.com/user-attachments/files/19544787/epub-book.epub.zip",
             )
-                .as_str(),
+            .as_str(),
         )
-            .unwrap();
+        .unwrap();
 
         let nav = book.nav().as_slice();
 
@@ -1245,8 +1252,8 @@ html
                     .unwrap()
                     .to_vec()
             )
-                .unwrap()
-                .len()
+            .unwrap()
+            .len()
         );
     }
     /// 测试epub3的读取资源文件

@@ -145,7 +145,7 @@ cache_struct! {
 #[derive(Debug)]
 pub struct MobiAssets {
     pub(crate) _file_name: String,
-    pub(crate) media_type: String,
+    pub(crate) _media_type: String,
     pub(crate) _data: Option<Vec<u8>>,
     pub(crate) recindex: usize,
 }
@@ -154,7 +154,7 @@ impl MobiAssets {
     pub fn new(data: Vec<u8>) -> Self {
         MobiAssets {
             _file_name: String::new(),
-            media_type: String::new(),
+            _media_type: String::new(),
             _data: Some(data),
             recindex: 0,
         }
@@ -384,7 +384,7 @@ impl<T: Read + Seek> MobiReader<T> {
             chapters,
             cover: cover.map(|f| MobiAssets {
                 _file_name: f.get_file_name(),
-                media_type: String::new(),
+                _media_type: String::new(),
                 _data: Some(f.0),
                 recindex: 0,
             }),
