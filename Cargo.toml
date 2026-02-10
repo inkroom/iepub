@@ -1,5 +1,5 @@
 [workspace]
-members = [ "derive", "lib"] 
+members = [ "derive", "lib", "cli"] 
 resolver = "2"
 
 [workspace.package]
@@ -11,6 +11,6 @@ description = "epub、mobi电子书读写"
 repository = "https://github.com/inkroom/iepub"
 readme = "./README.md"
 keywords = ["epub","mobi","azw","ebook"]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [patch.crates-io]
 iepub = { path = "lib" }

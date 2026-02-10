@@ -2,12 +2,12 @@
 //!
 //! tool -i file.epub get-cover 1.jpg
 //!
-
-mod cli;
+mod arg;
+mod command;
+mod log;
 
 use std::{env, fs::File};
-
-use cli::arg::{Arg, ArgOption, OptionDef, OptionType};
+use crate::arg::{Arg, ArgOption, OptionDef, OptionType};
 use commands::{epub, mobi};
 use iepub::prelude::*;
 
@@ -24,7 +24,7 @@ fn create_option_def() -> Vec<OptionDef> {
 mod commands {
     macro_rules! register_command {
         ($($cmd_type:ident),*) => {
-            pub(crate) fn create_command_option_def() -> Vec<$crate::cli::arg::CommandOptionDef> {
+            pub(crate) fn create_command_option_def() -> Vec<$crate::arg::CommandOptionDef> {
                 vec![
                 $(
                 $cmd_type::def(),
@@ -43,7 +43,7 @@ mod commands {
         };
     }
     pub(crate) mod epub {
-        use crate::cli::command::epub::*;
+        use crate::command::epub::*;
 
         // 注册子命令
         #[cfg(feature = "md-5")]
@@ -73,7 +73,7 @@ mod commands {
         );
     }
     pub(crate) mod mobi {
-        use crate::cli::command::mobi::*;
+        use crate::command::mobi::*;
         register_command!(
             BookInfoGetter,
             GetImage,
@@ -170,10 +170,10 @@ fn main() {
     let mut s: Vec<String> = env::args().collect();
     let exe_file_name = s.remove(0); //把第一个参数去掉
 
-    let (mut arg, index) = cli::arg::parse_global_arg(s, create_option_def()).unwrap();
+    let (mut arg, index) = arg::parse_global_arg(s, create_option_def()).unwrap();
 
     // 设置日志
-    cli::log::set_enable_log(arg.find_opt("l").is_some());
+    log::set_enable_log(arg.find_opt("l").is_some());
 
     if print_useage(&arg, &exe_file_name) {
         return;
@@ -187,7 +187,7 @@ fn main() {
     if let Some((input_type, _)) = input_type {
         // 解析参数
         // 解析后续参数
-        cli::arg::parse_command_arg(
+        arg::parse_command_arg(
             &mut arg,
             env::args().skip(index + 1).map(|f| f.to_string()).collect(),
             if input_type == 0 {

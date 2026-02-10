@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::{
-    cli::arg::{self, OptUtil},
+    arg::{self, OptUtil},
     exec_err, msg,
 };
 use iepub::prelude::*;
@@ -121,14 +121,14 @@ fn read_book(file: &str) -> IResult<OwnBook> {
 }
 
 pub(crate) mod epub {
-    
+
     use std::vec;
 
-    use crate::cli::arg::OptUtil;
-    use crate::cli::command::get_single_input;
-    use crate::cli::command::is_overiade;
-    use crate::cli::command::out_file;
-    use crate::cli::command::write_file;
+    use crate::arg::OptUtil;
+    use crate::command::get_single_input;
+    use crate::command::is_overiade;
+    use crate::command::out_file;
+    use crate::command::write_file;
     use crate::exec_err;
     use crate::Book;
     use iepub::prelude::adapter::add_into_epub;
@@ -143,7 +143,7 @@ pub(crate) mod epub {
     use iepub::prelude::MobiWriter;
 
     use crate::{
-        cli::arg::{self, ArgOption, CommandOptionDef, OptionDef, OptionType},
+        arg::{self, ArgOption, CommandOptionDef, OptionDef, OptionType},
         msg, Command,
     };
 
@@ -1117,10 +1117,8 @@ pub(crate) mod mobi {
     use iepub::prelude::{adapter::mobi_to_epub, EpubWriter, MobiNav, MobiWriter};
 
     use crate::{
-        cli::{
-            arg::{self, ArgOption, OptUtil, OptionDef, OptionType},
-            command::out_file,
-        },
+        arg::{self, ArgOption, OptUtil, OptionDef, OptionType},
+        command::out_file,
         exec_err, msg, Book, Command,
     };
 

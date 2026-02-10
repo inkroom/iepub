@@ -466,7 +466,7 @@ impl OptUtil for &[ArgOption] {
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::arg::{OptUtil, OptionType};
+    use crate::arg::{OptUtil, OptionType};
 
     use super::{parse_command_arg, parse_global_arg, Arg, CommandOptionDef, OptionDef};
     fn create_option_def() -> Vec<OptionDef> {

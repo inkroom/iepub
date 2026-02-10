@@ -7,7 +7,7 @@ pub(crate) fn set_enable_log(value: bool) {
 macro_rules! msg {
     ( $($arg:tt)+) => {
         unsafe{
-            if $crate::cli::log::IS_LOG {
+            if $crate::log::IS_LOG {
                 println!($($arg)+)
             }
         }
