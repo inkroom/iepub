@@ -172,6 +172,8 @@ impl Debug for EpubHtml {
 }
 
 impl EpubHtml {
+    const PREFIXES: [&str; 4] = ["", common::EPUB, common::EPUB3, "OPS/"];
+
     pub fn string_data(&mut self) -> String {
         if self._data.is_none() {
             self.data_mut();
@@ -209,9 +211,8 @@ impl EpubHtml {
             (None, self.file_name().to_string())
         };
         let mut f = String::from(self._file_name.as_str());
-        let prefixs = ["", common::EPUB, common::EPUB3];
         if self._data.is_none() && !f.is_empty() {
-            for prefix in prefixs.iter() {
+            for prefix in EpubHtml::PREFIXES.iter() {
                 // 添加 前缀再次读取
                 f = format!("{prefix}{origin}");
                 let d = reader.read_string(f.as_str());
@@ -267,9 +268,8 @@ impl EpubHtml {
             (None, self.file_name().to_string())
         };
         let mut f = String::from(self._file_name.as_str());
-        let prefixs = ["", common::EPUB, common::EPUB3];
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            for prefix in prefixs.iter() {
+            for prefix in EpubHtml::PREFIXES.iter() {
                 // 添加 前缀再次读取
                 f = format!("{prefix}{origin}");
                 let s = self.reader.as_mut().unwrap();
@@ -334,9 +334,8 @@ impl EpubHtml {
             (None, self.file_name().to_string())
         };
         let mut f = String::from(self._file_name.as_str());
-        let prefixs = ["", common::EPUB, common::EPUB3];
         if self.raw_data.is_none() && self.reader.is_some() && !f.is_empty() {
-            for prefix in prefixs.iter() {
+            for prefix in EpubHtml::PREFIXES.iter() {
                 // 添加 前缀再次读取
                 f = format!("{prefix}{origin}");
                 let s = self.reader.as_mut().unwrap();
@@ -449,9 +448,8 @@ impl EpubAssets {
     pub fn data_mut(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            let prefixs = ["", common::EPUB, common::EPUB3];
             if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-                for prefix in prefixs.iter() {
+                for prefix in EpubHtml::PREFIXES.iter() {
                     let s = self.reader.as_mut().unwrap();
                     // 添加 前缀再次读取
                     f = format!("{prefix}{}", self._file_name);
@@ -486,8 +484,7 @@ impl EpubAssets {
     pub fn save_to<T: AsRef<str>>(&mut self, file_path: T) -> IResult<()> {
         let mut f: String = self._file_name.clone();
         if self.reader.is_some() && !f.is_empty() {
-            let prefixs = ["", common::EPUB, common::EPUB3];
-            for prefix in prefixs.iter() {
+            for prefix in EpubHtml::PREFIXES.iter() {
                 let s = self.reader.as_mut().unwrap();
                 f = format!("{prefix}{}", self._file_name);
                 let d: Result<(), IError> = s
