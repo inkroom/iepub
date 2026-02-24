@@ -10,9 +10,9 @@ keywords = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-zip = "7.4.0"
-anyhow = "1.0.101"
-quick-xml = { version = "0.39.0" }
+zip = "8.1.0"
+anyhow = "1.0.102"
+quick-xml = { version = "0.39.2" }
 ab_glyph = { version = "0.2.32", optional = true }
 imageproc = { version = "0.26.0", optional = true}
 serde_json = { version = "1.0.149", optional = true }
