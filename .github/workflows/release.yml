@@ -70,25 +70,36 @@ jobs:
       - name: Test
         shell: bash
         run: |
+          result=false
           echo "::group::编译"
           cargo test --workspace --all-features --no-run
           echo "::endgroup::"
           # actions也经常下载出现问题，只能重试
           for i in {1..4}; do
+            result=false
             echo "::group::all 第 $i 次测试"
-            cargo test --workspace --all-features -- --exact --show-output 2>/dev/null && echo "::endgroup::" && break
+            cargo test --workspace --all-features -- --exact --show-output 2>/dev/null && echo "::endgroup::" && result=true && break
             echo "::endgroup::"
             sleep 5
           done
+          if [[ "$result" =~ "false" ]]; then
+            echo "::error ::单元测试失败"
+            exit 127
+          fi
           echo "::group::编译"
           cargo test --workspace --no-run
           echo "::endgroup::"
           for i in {1..4}; do
+            result=false
             echo "::group::第 $i 次测试"
-            cargo test --workspace -- --exact --show-output 2>/dev/null && echo "::endgroup::" && break
+            cargo test --workspace -- --exact --show-output 2>/dev/null && echo "::endgroup::" && result=true && break
             echo "::endgroup::"
             sleep 5
           done
+          if [[ "$result" =~ "false" ]]; then
+            echo "::error ::单元测试失败"
+            exit 127
+          fi
   check:
     runs-on: ubuntu-24.04
     needs: [version, test]
