@@ -88,6 +88,10 @@ fn read_meta_xml(
     let t_s = reader.config().trim_text_start;
     let t_e = reader.config().trim_text_end;
     reader.config_mut().trim_text(false);
+
+    // 可能有多个时间，所以需要缓存，然后再分别处理
+    let mut date_buf: Vec<(Option<String>, Option<String>)> = Vec::new();
+
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
     let mut buf = Vec::new();
@@ -111,6 +115,20 @@ fn read_meta_xml(
                             book.add_meta(m);
                         }
                         parent.push("meta".to_string());
+                    }
+                } else if name == "dc:date" {
+                    if let Some(event) =
+                        e.try_get_attribute("opf:event")
+                            .ok()
+                            .and_then(|f| f)
+                            .map(|f| {
+                                f.unescape_value()
+                                    .map_or_else(|_| String::new(), |v| v.to_string())
+                            })
+                    {
+                        date_buf.push((Some(event), None));
+                    } else {
+                        date_buf.push((None, None));
                     }
                 } else if parent.len() != 2 || parent[1] != "metadata" {
                     return invalid!("not valid opf identifier");
@@ -191,7 +209,9 @@ fn read_meta_xml(
                         book.set_contributor(text.trim());
                     }
                     "dc:date" => {
-                        book.set_date(text.trim());
+                        if let Some(last_mut) = date_buf.last_mut() {
+                            last_mut.1 = Some(text.trim().to_string());
+                        }
                     }
                     _ => {}
                 }
@@ -210,6 +230,25 @@ fn read_meta_xml(
             _ => {}
         }
     }
+
+    // 处理时间
+    for (event, value) in &date_buf {
+        if let Some(event) = event {
+            if event == "publication" {
+                if let Some(value) = value {
+                    book.set_date(value);
+                }
+            } else if event == "modification" {
+                if let Some(value) = value {
+                    book.set_last_modify(value);
+                }
+            }
+        } else if let Some(value) = value {
+            // 没有event的日期
+            book.set_date(value);
+        }
+    }
+
     reader.config_mut().trim_text_start = t_s;
     reader.config_mut().trim_text_end = t_e;
     Ok(())
@@ -226,30 +265,32 @@ fn read_guide_xml(
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => if e.name().as_ref() == b"reference" {
-                // <reference href="cover.xhtml" title="cover" type="cover"/>
-                // 读取封面页的时候，不一定已经获取到了章节
-                if let Some(_t) = e
-                    .try_get_attribute("type")
-                    .ok()
-                    .and_then(|f| f)
-                    .map(|f| {
-                        f.unescape_value()
-                            .map_or_else(|_| String::new(), |v| v.to_string())
-                    })
-                    .filter(|f| f == "cover")
-                {
-                    if let Some(href) =
-                        e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+            Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"reference" {
+                    // <reference href="cover.xhtml" title="cover" type="cover"/>
+                    // 读取封面页的时候，不一定已经获取到了章节
+                    if let Some(_t) = e
+                        .try_get_attribute("type")
+                        .ok()
+                        .and_then(|f| f)
+                        .map(|f| {
                             f.unescape_value()
                                 .map_or_else(|_| String::new(), |v| v.to_string())
                         })
+                        .filter(|f| f == "cover")
                     {
-                        book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                        if let Some(href) =
+                            e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+                                f.unescape_value()
+                                    .map_or_else(|_| String::new(), |v| v.to_string())
+                            })
+                        {
+                            book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
+                        }
+                        break;
                     }
-                    break;
                 }
-            },
+            }
             Ok(Event::Empty(e)) => {
                 match e.name().as_ref() {
                     b"reference" => {
@@ -282,9 +323,11 @@ fn read_guide_xml(
                     }
                 }
             }
-            Ok(Event::End(e)) => if e.name().as_ref() == b"guide" {
-                break;
-            },
+            Ok(Event::End(e)) => {
+                if e.name().as_ref() == b"guide" {
+                    break;
+                }
+            }
 
             Ok(Event::Eof) => {
                 break;
@@ -753,7 +796,11 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
                         .attributes()
                         .find(|a| a.as_ref().map(|a| a.key.0 == b"class").unwrap_or(false))
                     {
-                        if class.as_ref().map(|a| &*a.value == b"toc-label").unwrap_or(false) {
+                        if class
+                            .as_ref()
+                            .map(|a| &*a.value == b"toc-label")
+                            .unwrap_or(false)
+                        {
                             in_label = true
                         }
                     }
@@ -1026,12 +1073,12 @@ pub fn is_epub<T: Read>(value: &mut T) -> IResult<bool> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use crate::{
         common::tests::download_epub_file,
         epub::reader::{get_img_src, read_meta_xml},
         prelude::*,
     };
+    use std::fs;
 
     use super::{is_epub, read_nav_xml};
 
@@ -1172,9 +1219,9 @@ html
                 name,
                 "https://github.com/user-attachments/files/19544787/epub-book.epub.zip",
             )
-                .as_str(),
+            .as_str(),
         )
-            .unwrap();
+        .unwrap();
 
         let nav = book.nav().as_slice();
 
@@ -1207,9 +1254,11 @@ html
         // println!("{}", String::from_utf8( chap.next().unwrap().data().unwrap().to_vec()).unwrap());
         chap.next();
         chap.next();
+        let nt = chap.next().unwrap();
+        println!("nt = {}",nt.title());
         assert_eq!(
             9343,
-            chap.next().unwrap().data_mut().unwrap().to_vec().len()
+            nt.data_mut().unwrap().to_vec().len()
         );
 
         for i in chap {
@@ -1245,8 +1294,8 @@ html
                     .unwrap()
                     .to_vec()
             )
-                .unwrap()
-                .len()
+            .unwrap()
+            .len()
         );
     }
     /// 测试epub3的读取资源文件

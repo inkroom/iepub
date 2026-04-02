@@ -298,7 +298,12 @@ pub fn epub_to_mobi(epub: &mut EpubBook) -> IResult<MobiBook> {
         builder = builder.with_description(v);
     }
     if let Some(v) = epub.date() {
-        builder = builder.with_date(v);
+        // 处理时间格式，2022-03-03 -> 2022-03-03T16:00:00+00:00
+        if v.len() == 10 {
+            builder = builder.with_date(format!("{v}T16:00:00+00:00"));
+        } else {
+            builder = builder.with_date(v);
+        }
     }
     if let Some(v) = epub.format() {
         builder = builder.with_format(v);
@@ -341,7 +346,7 @@ pub fn epub_to_mobi(epub: &mut EpubBook) -> IResult<MobiBook> {
     for ele in epub.assets_mut() {
         let data = ele.data_mut().ok_or(IError::Unknown)?.to_vec();
         builder = builder.add_assets(ele.file_name(), data);
-    }
+    } 
     // 添加文本
     for (html, _) in chap_temp {
         builder = builder.add_chapter(html);
