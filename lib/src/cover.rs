@@ -6,19 +6,19 @@ use crate::common::IResult;
 #[cfg(feature = "cover")]
 mod text_width {
     use ab_glyph::PxScale;
-    use image::{DynamicImage, GenericImageView, Rgba};
+    use image::{RgbImage, GenericImageView, Rgba};
 
     pub struct ImageCrop {
-        pub original: DynamicImage,
+        pub original: RgbImage,
     }
 
     impl ImageCrop {
         pub fn new(text: &str, width: u32, height: u32, font: &impl ab_glyph::Font) -> ImageCrop {
-            let mut img = DynamicImage::new_rgb8(width, height);
+            let mut img = RgbImage::new(width, height);
             // 绘制白色文字
             imageproc::drawing::draw_text_mut(
                 &mut img,
-                image::Rgba([255u8, 255u8, 255u8, 1u8]),
+                image::Rgb([255u8, 255u8, 255u8]),
                 0,
                 0,
                 PxScale {
@@ -36,7 +36,7 @@ mod text_width {
             let mut left_x = 0;
             let mut right_x = 0;
             #[inline]
-            fn is_not_black(pixel: Rgba<u8>) -> bool {
+            fn is_not_black(pixel: &image::Rgb<u8>) -> bool {
                 pixel[0] != 0 && pixel[1] != 0 && pixel[2] != 0
             }
             for x in 0..width {
@@ -98,7 +98,7 @@ mod text_width {
 #[cfg(feature = "cover")]
 pub(crate) fn gen_cover(book_name: &str, font: &[u8]) -> IResult<Vec<u8>> {
     use ab_glyph::{FontRef, PxScale};
-    use image::DynamicImage;
+    use image::RgbImage;
     use text_width::ImageCrop;
 
     let width = 150;
@@ -107,7 +107,7 @@ pub(crate) fn gen_cover(book_name: &str, font: &[u8]) -> IResult<Vec<u8>> {
 
     let text = book_name;
 
-    let mut img = DynamicImage::new_rgb8(width, height);
+    let mut img = RgbImage::new(width, height);
 
     let row_count;
     let col_count;
@@ -148,7 +148,7 @@ pub(crate) fn gen_cover(book_name: &str, font: &[u8]) -> IResult<Vec<u8>> {
             x += (col * use_width) as i32;
             imageproc::drawing::draw_text_mut(
                 &mut img,
-                image::Rgba([255u8, 255u8, 255u8, 1u8]),
+                image::Rgb([255u8, 255u8, 255u8]),
                 x,
                 (margin + row * use_height) as i32,
                 sc,
