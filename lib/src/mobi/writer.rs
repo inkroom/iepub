@@ -184,17 +184,17 @@ impl MOBIHeader {
         writer.write_u32(self.huffman_table_offset)?;
         writer.write_u32(self.huffman_table_length)?;
         writer.write_u32(self.exth_flags)?;
-        writer.write_zero(36)?;
+        writer.write_zero(32)?;
         writer.write_u32(self.drm_offset)?;
         writer.write_u32(self.drm_count)?;
         writer.write_u32(self.drm_size)?;
         writer.write_u32(self.drm_flags)?;
-        writer.write_zero(8)?;
+        writer.write_zero(12)?;
         writer.write_u16(self.first_content_record_number)?;
         writer.write_u16(self.last_content_record_number)?;
         writer.write_u32(1)?;
         writer.write_u32(self.fcis_record_number)?;
-        writer.write_zero(4)?;
+        writer.write_u32(1)?;
         writer.write_u32(self.flis_record_number)?;
         writer.write_u32(1)?;
         writer.write_zero(8)?;
@@ -232,7 +232,7 @@ impl MOBIHeader {
 impl EXTHHeader {
     fn from(book: &MobiBook) -> Self {
         #[inline]
-        fn gene(t: u32, data: &str) -> EXTHRecord {
+        fn gene(t: crate::mobi::common::EXTHRecordType, data: &str) -> EXTHRecord {
             let v = data.as_bytes();
             EXTHRecord {
                 _type: t,
@@ -243,40 +243,42 @@ impl EXTHHeader {
 
         let mut record_list = Vec::new();
 
-        record_list.push(gene(503, book.title()));
-
+        record_list.push(gene(
+            crate::mobi::common::EXTHRecordType::UpdatedTitle,
+            book.title(),
+        ));
         if let Some(v) = book.publisher() {
-            record_list.push(gene(101, v));
+            record_list.push(gene(crate::mobi::common::EXTHRecordType::Publisher, v));
         }
 
         if let Some(v) = book.creator() {
-            record_list.push(gene(100, v));
+            record_list.push(gene(crate::mobi::common::EXTHRecordType::Author, v));
         }
 
         if let Some(v) = book.description() {
-            record_list.push(gene(103, v));
+            record_list.push(gene(crate::mobi::common::EXTHRecordType::Description, v));
         }
 
-        record_list.push(gene(104, book.identifier()));
+        record_list.push(gene(super::common::EXTHRecordType::Isbn, book.identifier()));
 
         if let Some(v) = book.subject() {
-            record_list.push(gene(105, v));
+            record_list.push(gene(super::common::EXTHRecordType::Subject, v));
         }
         if let Some(v) = book.date() {
-            record_list.push(gene(106, v));
+            record_list.push(gene(super::common::EXTHRecordType::PublishingDate, v));
         }
         if let Some(v) = book.contributor() {
-            record_list.push(gene(108, v));
+            record_list.push(gene(super::common::EXTHRecordType::Contributor, v));
         }
 
         if book.cover().is_some() {
             record_list.push(EXTHRecord {
-                _type: 201,
+                _type: crate::mobi::common::EXTHRecordType::CoverOffset,
                 len: (8 + 4) as u32,
                 data: [0u8; 4].to_vec(), // 这里固定为0 ，写入请求头时也设置为0
             });
             record_list.push(EXTHRecord {
-                _type: 202,
+                _type: crate::mobi::common::EXTHRecordType::ThumbOffset,
                 len: (8 + 4) as u32,
                 data: [0u8; 4].to_vec(), // 这里固定为0 ，写入请求头时也设置为0
             });
@@ -297,7 +299,7 @@ impl EXTHHeader {
         writer.write_u32(self.record_list.len() as u32)?;
 
         for ele in &self.record_list {
-            writer.write_u32(ele._type)?;
+            writer.write_u32(ele._type.code())?;
             writer.write_u32(ele.len)?;
             writer.write(&ele.data)?;
         }
@@ -709,7 +711,7 @@ impl<T: Write + Seek> MobiWriter<T> {
             text_encoding: 65001,
             unique_id: 98,
             file_version: 6,
-            ortographic_index: 0,
+            ortographic_index: 0xFFFFFFFF,
             inflection_index: 0xFFFFFFFF,
             index_names: 0xFFFFFFFF,
             index_keys: 0xFFFFFFFF,
@@ -733,9 +735,9 @@ impl<T: Write + Seek> MobiWriter<T> {
             drm_flags: 0,
             first_content_record_number: 1,
             last_content_record_number: last_text_record_idx as u16,
-            fcis_record_number: 0,
-            flis_record_number: 0,
-            first_compilation_data_section_count: 0xffffffff,
+            fcis_record_number: (last_text_record_idx + 2) as u32,
+            flis_record_number: (last_text_record_idx + 1) as u32,
+            first_compilation_data_section_count: 0,
             number_of_compilation_data_sections: 0xffffffff,
             extra_record_data_flags: 0, // 实在搞不懂这个尾巴要怎么加，干脆就不加了
             indx_record_offset: 0xffffffff,
@@ -769,11 +771,11 @@ impl<T: Write + Seek> MobiWriter<T> {
         // 使用空数据占位，后续再来修改offset
 
         record_info_list.append(
-            &mut (0..(text.len() + assets.len() + 1))
-                .map(|_| PDBRecordInfo {
+            &mut (0..(text.len() + assets.len() + 3))
+                .map(|s| PDBRecordInfo {
                     offset: 0,
                     attribute: 0,
-                    unique_id: 0,
+                    unique_id: (s * 2) as u32,
                 })
                 .collect(),
         );
@@ -800,6 +802,17 @@ impl<T: Write + Seek> MobiWriter<T> {
             record_info_list[index + text.len() + 1].offset = self.inner.stream_position()? as u32;
             self.inner.write_all(&ele.data)?;
         }
+        // 添加FCIS和FLIS
+        let len = record_info_list.len();
+        record_info_list[len - 2].offset = self.inner.stream_position()? as u32;
+
+        self.inner.write_all(b"FLIS\0\0\0\x08\0A\0\0\0\0\0\0\xff\xff\xff\xff\0\x01\0\x03\0\0\0\x03\0\0\0\x01\xff\xff\xff\xff")?;
+        record_info_list[len - 1].offset = self.inner.stream_position()? as u32;
+        self.inner.write_all(&fcis(text_length as u32))?;
+
+        // 还有个EOF
+        self.inner.write_all(b"\xE9\x8E\x0D\x0A")?;
+
         // 重新写入offset
         self.inner.seek(std::io::SeekFrom::Start(78))?;
         for ele in &record_info_list {
@@ -809,7 +822,22 @@ impl<T: Write + Seek> MobiWriter<T> {
         Ok(())
     }
 }
+fn fcis(text_length: u32) -> Vec<u8> {
+    let mut fcis = Vec::new();
 
+    // 添加固定字节序列
+    fcis.extend_from_slice(b"FCIS\x00\x00\x00\x14\x00\x00\x00\x10\x00\x00\x00\x01\x00\x00\x00\x00");
+
+    // 添加大端序的text_length
+    fcis.extend_from_slice(&(text_length).to_be_bytes());
+
+    // 添加剩余的固定字节序列
+    fcis.extend_from_slice(
+        b"\x00\x00\x00\x00\x00\x00\x00\x20\x00\x00\x00\x08\x00\x01\x00\x01\x00\x00\x00\x00",
+    );
+
+    fcis
+}
 #[cfg(test)]
 mod tests {
 

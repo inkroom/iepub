@@ -143,6 +143,7 @@ pub(crate) struct MOBIHeader {
     pub(crate) huffman_table_length: u32,
     /// bitfield. if bit 6 (0x40) is set, then there's an EXTH record
     /// 当从低到高第六位为1，代表有EXTH，与其他bit无关
+    /// bit 12 为1 ，代表有嵌入字体
     pub(crate) exth_flags: u32,
     // 32 unknown bytes, if MOBI is long enough
     // unknown_0: [u8; 8],
@@ -190,11 +191,186 @@ pub(crate) struct MOBIHeader {
     /// (If not 0xFFFFFFFF)The record number of the first INDX record created from an ncx file.
     pub(crate) indx_record_offset: u32,
 }
-
+#[derive(Debug, Clone)]
+pub(crate) enum EXTHRecordType {
+    DrmServerId = 1,
+    DrmCommerceId = 2,
+    DrmEbookbaseBookId = 3,
+    Author = 100,
+    Publisher = 101,
+    Imprint = 102,
+    Description = 103,
+    Isbn = 104,
+    /// Could appear multiple times
+    Subject = 105,
+    PublishingDate = 106,
+    Review = 107,
+    Contributor = 108,
+    Rights = 109,
+    SubjectCode = 110,
+    Type = 111,
+    Source = 112,
+    /// Kindle Paperwhite labels books with "Personal" if they don't have this record.
+    Asin = 113,
+    VersionNumber = 114,
+    /// 0x0001 if the book content is only a sample of the full book
+    Sample = 115,
+    /// Position (4-byte offset) in file at which to open when first opened
+    StartReading = 116,
+    /// Mobipocket Creator adds this if Adult only is checked on its GUI; contents: "yes"
+    Adult = 117,
+    /// As text, e.g. "4.99"
+    RetailPrice = 118,
+    /// As text, e.g. "USD"
+    RetailPriceCurrency = 119,
+    Kf8BoundaryOffset = 121,
+    ///  "true"
+    FixedLayout = 122,
+    /// "comic"
+    BookType = 123,
+    ///  "none", "portrait", "landscape"
+    OrientationLock = 124,
+    CountOfResources = 125,
+    ///  "1072x1448"
+    OriginalResolution = 126,
+    ///  "true"
+    ZeroGutter = 127,
+    ///  "true"
+    ZeroMargin = 128,
+    MetadataResourceUri = 129,
+    Unknown0 = 131,
+    ///  "true"
+    Unknown1 = 132,
+    /// As text
+    DictionaryShortName = 200,
+    ///  Add to first image field in Mobi Header to find PDB record containing the cover image
+    CoverOffset = 201,
+    ///  Add to first image field in Mobi Header to find PDB record containing the thumbnail cover image
+    ThumbOffset = 202,
+    HasFakeCover = 203,
+    ///  	Known Values: 1=mobigen, 2=Mobipocket Creator, 200=kindlegen (Windows), 201=kindlegen (Linux), 202=kindlegen (Mac).
+    /// Warning: Calibre creates fake creator entries, pretending to be a Linux kindlegen 1.2 (201, 1, 2, 33307) for normal ebooks and a non-public Linux kindlegen 2.0 (201, 2, 0, 101) for periodicals
+    CreatorSoftware = 204,
+    CreatorMajorVersion = 205,
+    CreatorMinorVersion = 206,
+    CreatorBuildNumber = 207,
+    Watermark = 208,
+    /// Used by the Kindle (and Android app) for generating book-specific PIDs.
+    TamperProofKeys = 209,
+    Fontsignature = 300,
+    /// Integer percentage of the text allowed to be clipped. Usually 10.
+    ClippingLimit = 401,
+    PublisherLimit = 402,
+    Unknown2 = 403,
+    /// 1 - Text to Speech disabled; 0 - Text to Speech enabled
+    Ttsflag = 404,
+    ///  1 in this field seems to indicate a rental book
+    UnknownRentBorrowFlag = 405,
+    ///  If this field is removed from a rental, the book says it expired in 1969
+    RentOrBorrowExpirationDate = 406,
+    Unknown3 = 407,
+    Unknown4 = 450,
+    Unknown5 = 451,
+    Unknown6 = 452,
+    Unknown7 = 453,
+    ///  PDOC - Personal Doc; EBOK - ebook; EBSP - ebook sample;
+    Cdetype = 501,
+    LastupdateTime = 502,
+    UpdatedTitle = 503,
+    Language = 524,
+    ///  I found horizontal-lr in this record.
+    WritingMode = 525,
+    Unknown8 = 536,
+    ///  Some Unix timestamp.
+    Unknown9 = 542,
+    ///  String 'I\x00n\x00M\x00e\x00m\x00o\x00r\x00y\x00' found in this record, for KindleGen V2.9 build 1029-0897292
+    InMemory = 547,
+}
+impl Default for EXTHRecordType {
+    fn default() -> Self {
+        EXTHRecordType::Unknown0
+    }
+}
+impl EXTHRecordType {
+    pub(crate) fn code(&self) -> u32 {
+        self.clone() as u32
+    }
+}
+impl From<u32> for EXTHRecordType {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => EXTHRecordType::DrmServerId,
+            2 => EXTHRecordType::DrmCommerceId,
+            3 => EXTHRecordType::DrmEbookbaseBookId,
+            100 => EXTHRecordType::Author,
+            101 => EXTHRecordType::Publisher,
+            102 => EXTHRecordType::Imprint,
+            103 => EXTHRecordType::Description,
+            104 => EXTHRecordType::Isbn,
+            105 => EXTHRecordType::Subject,
+            106 => EXTHRecordType::PublishingDate,
+            107 => EXTHRecordType::Review,
+            108 => EXTHRecordType::Contributor,
+            109 => EXTHRecordType::Rights,
+            110 => EXTHRecordType::SubjectCode,
+            111 => EXTHRecordType::Type,
+            112 => EXTHRecordType::Source,
+            113 => EXTHRecordType::Asin,
+            114 => EXTHRecordType::VersionNumber,
+            115 => EXTHRecordType::Sample,
+            116 => EXTHRecordType::StartReading,
+            117 => EXTHRecordType::Adult,
+            118 => EXTHRecordType::RetailPrice,
+            119 => EXTHRecordType::RetailPriceCurrency,
+            121 => EXTHRecordType::Kf8BoundaryOffset,
+            122 => EXTHRecordType::FixedLayout,
+            123 => EXTHRecordType::BookType,
+            124 => EXTHRecordType::OrientationLock,
+            125 => EXTHRecordType::CountOfResources,
+            126 => EXTHRecordType::OriginalResolution,
+            127 => EXTHRecordType::ZeroGutter,
+            128 => EXTHRecordType::ZeroMargin,
+            129 => EXTHRecordType::MetadataResourceUri,
+            131 => EXTHRecordType::Unknown0,
+            132 => EXTHRecordType::Unknown1,
+            200 => EXTHRecordType::DictionaryShortName,
+            201 => EXTHRecordType::CoverOffset,
+            202 => EXTHRecordType::ThumbOffset,
+            203 => EXTHRecordType::HasFakeCover,
+            204 => EXTHRecordType::CreatorSoftware,
+            205 => EXTHRecordType::CreatorMajorVersion,
+            206 => EXTHRecordType::CreatorMinorVersion,
+            207 => EXTHRecordType::CreatorBuildNumber,
+            208 => EXTHRecordType::Watermark,
+            209 => EXTHRecordType::TamperProofKeys,
+            300 => EXTHRecordType::Fontsignature,
+            401 => EXTHRecordType::ClippingLimit,
+            402 => EXTHRecordType::PublisherLimit,
+            403 => EXTHRecordType::Unknown2,
+            404 => EXTHRecordType::Ttsflag,
+            405 => EXTHRecordType::UnknownRentBorrowFlag,
+            406 => EXTHRecordType::RentOrBorrowExpirationDate,
+            407 => EXTHRecordType::Unknown3,
+            450 => EXTHRecordType::Unknown4,
+            451 => EXTHRecordType::Unknown5,
+            452 => EXTHRecordType::Unknown6,
+            453 => EXTHRecordType::Unknown7,
+            501 => EXTHRecordType::Cdetype,
+            502 => EXTHRecordType::LastupdateTime,
+            503 => EXTHRecordType::UpdatedTitle,
+            524 => EXTHRecordType::Language,
+            505 => EXTHRecordType::WritingMode,
+            536 => EXTHRecordType::Unknown8,
+            542 => EXTHRecordType::Unknown9,
+            547 => EXTHRecordType::InMemory,
+            _ => EXTHRecordType::Unknown0,
+        }
+    }
+}
 #[derive(Default, Debug)]
 pub(crate) struct EXTHRecord {
     /// Exth Record type. Just a number identifying what's stored in the record
-    pub(crate) _type: u32,
+    pub(crate) _type: EXTHRecordType,
     /// length of EXTH record = L , including the 8 bytes in the type and length fields
     pub(crate) len: u32,
     /// Data，L - 8

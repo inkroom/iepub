@@ -144,12 +144,12 @@ impl MOBIHeader {
         reader.seek(SeekFrom::Current(32))?;
         // reader.read_exact(&mut header.unknown_0)?;
 
-        let _ = reader.read_u32()?;
         header.drm_offset = reader.read_u32()?;
         header.drm_count = reader.read_u32()?;
         header.drm_size = reader.read_u32()?;
         header.drm_flags = reader.read_u32()?;
         let _ = reader.read_u64()?;
+         let _ = reader.read_u32()?;
         header.first_content_record_number = reader.read_u16()?;
         header.last_content_record_number = reader.read_u16()?;
         let _ = reader.read_u32()?;
@@ -174,7 +174,7 @@ impl MOBIHeader {
 impl EXTHRecord {
     fn load<T: ReadCount>(reader: &mut T) -> IResult<Self> {
         let mut v = Self::default();
-        v._type = reader.read_u32()?;
+        v._type = reader.read_u32()?.into();
         v.len = reader.read_u32()?;
 
         reader.take((v.len - 8) as u64).read_to_end(&mut v.data)?;
@@ -230,7 +230,13 @@ impl EXTHHeader {
     fn get_cover_offset(&self) -> Option<u64> {
         self.record_list
             .iter()
-            .find(|x| x._type == 201)
+            .find(|x| {
+                if let super::common::EXTHRecordType::CoverOffset = x._type {
+                    true
+                } else {
+                    false
+                }
+            })
             .map(|f| vec_u8_to_u64(&f.data))
             .filter(|f| f < &0xffffffff)
     }
@@ -238,7 +244,13 @@ impl EXTHHeader {
     fn get_thumbnail_offset(&self) -> Option<u64> {
         self.record_list
             .iter()
-            .find(|x: &&EXTHRecord| x._type == 202)
+            .find(|x| {
+                if let super::common::EXTHRecordType::ThumbOffset = x._type {
+                    true
+                } else {
+                    false
+                }
+            })
             .map(|f| vec_u8_to_u64(&f.data))
             .filter(|f| f < &0xffffffff)
     }
@@ -248,30 +260,30 @@ impl EXTHHeader {
         let mut info = BookInfo::default();
         for ele in &self.record_list {
             match ele._type {
-                100 => {
+                super::common::EXTHRecordType::Author => {
                     let v = simple_utf8!(ele.data);
                     // 暂时只考虑utf-8编码
                     info.append_creator(v.as_str());
                 }
-                101 => {
+                super::common::EXTHRecordType::Publisher => {
                     info.publisher = Some(simple_utf8!(ele.data));
                 }
-                103 => {
+                super::common::EXTHRecordType::Description  => {
                     info.description = Some(simple_utf8!(ele.data));
                 }
-                104 => {
+                super::common::EXTHRecordType::Isbn => {
                     info.identifier = simple_utf8!(ele.data);
                 }
-                105 => {
+                super::common::EXTHRecordType::Subject => {
                     info.subject = Some(simple_utf8!(ele.data));
                 }
-                106 => {
+                super::common::EXTHRecordType::PublishingDate => {
                     info.date = Some(simple_utf8!(ele.data));
                 }
-                108 => {
+                super::common::EXTHRecordType::Contributor => {
                     info.contributor = Some(simple_utf8!(ele.data));
                 }
-                503 => {
+                super::common::EXTHRecordType::UpdatedTitle => {
                     info.title = simple_utf8!(ele.data);
                 }
                 _ => {}
