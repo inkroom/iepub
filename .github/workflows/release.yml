@@ -127,9 +127,9 @@ jobs:
         with:
          fetch-depth: 0
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Get Now Release Version
         id: v
         run: |
@@ -137,7 +137,7 @@ jobs:
           RUST_VERSION=$(curl -sL  https://api.github.com/repos/rust-lang/rust/tags | jq -c --raw-output 'map(select(.name | startswith("release") | not)) | sort_by(.name) | reverse | .[0].name ')
           echo RUST_VERSION="x86_64-musl-stable-$RUST_VERSION" >> $GITHUB_OUTPUT
       - name: Docker Build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         id: docker_id
         with:
           context: .

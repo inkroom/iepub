@@ -272,15 +272,16 @@ impl EXTHHeader {
         }
 
         if book.cover().is_some() {
+            let len = book.assets().len() as u32;
             record_list.push(EXTHRecord {
                 _type: crate::mobi::common::EXTHRecordType::CoverOffset,
                 len: (8 + 4) as u32,
-                data: [0u8; 4].to_vec(), // 这里固定为0 ，写入请求头时也设置为0
+                data: len.to_be_bytes().to_vec(), // 封面写到最后
             });
             record_list.push(EXTHRecord {
                 _type: crate::mobi::common::EXTHRecordType::ThumbOffset,
                 len: (8 + 4) as u32,
-                data: [0u8; 4].to_vec(), // 这里固定为0 ，写入请求头时也设置为0
+                data: len.to_be_bytes().to_vec(), // 封面写到最后
             });
         }
 
@@ -723,7 +724,7 @@ impl<T: Write + Seek> MobiWriter<T> {
             input_language: 0,
             output_language: 0,
             min_version: 6,
-            first_image_index: first_non_text_record_idx as u32,
+            first_image_index: first_non_text_record_idx as u32 ,
             huffman_record_offset: 0,
             huffman_record_count: 0,
             huffman_table_offset: 0,
@@ -758,20 +759,20 @@ impl<T: Write + Seek> MobiWriter<T> {
         let (text, text_length, last_text_record_idx, first_non_text_record_idx) =
             self.genrate_text_record(self.seriable_text_html(book));
         let mut assets = Vec::new();
+
+        assets.append(&mut self.generate_image_record(book.assets().as_slice()));
         if let Some(cover) = book.cover() {
-            // 封面始终保持在第一个
+            // 封面始终保持在最后一个，因为assets里可能已经包括了一份cover，在生成文本的时候recindex是按照book.assets()的顺序，放最后才能不打乱顺序
             assets.push(PDBRecord {
                 index: assets.len() + text.len(),
                 magic: None,
                 data: cover.data().as_ref().unwrap().to_vec(),
             });
         }
-        assets.append(&mut self.generate_image_record(book.assets().as_slice()));
-
         // 使用空数据占位，后续再来修改offset
 
         record_info_list.append(
-            &mut (0..(text.len() + assets.len() + 3))
+            &mut (0..(text.len() + assets.len() + 3 + 1))
                 .map(|s| PDBRecordInfo {
                     offset: 0,
                     attribute: 0,
@@ -786,31 +787,36 @@ impl<T: Write + Seek> MobiWriter<T> {
             book,
             text_length,
             last_text_record_idx,
-            first_non_text_record_idx - 1,
+            first_non_text_record_idx ,
         )?;
 
         record_info_list[0].offset = start as u32;
-
+        let mut index = 1;
         // 写入 text
-        for (index, ele) in text.iter().enumerate() {
-            record_info_list[index + 1].offset = self.inner.stream_position()? as u32;
+        for ele in text {
+            record_info_list[index].offset = self.inner.stream_position()? as u32;
+            index += 1;
             self.inner.write_all(&ele.data)?;
         }
 
         // 写入image
-        for (index, ele) in assets.iter().enumerate() {
-            record_info_list[index + text.len() + 1].offset = self.inner.stream_position()? as u32;
+        for ele in assets {
+            record_info_list[index].offset = self.inner.stream_position()? as u32;
+            index += 1;
             self.inner.write_all(&ele.data)?;
         }
         // 添加FCIS和FLIS
-        let len = record_info_list.len();
-        record_info_list[len - 2].offset = self.inner.stream_position()? as u32;
+        record_info_list[index].offset = self.inner.stream_position()? as u32;
+        index += 1;
 
         self.inner.write_all(b"FLIS\0\0\0\x08\0A\0\0\0\0\0\0\xff\xff\xff\xff\0\x01\0\x03\0\0\0\x03\0\0\0\x01\xff\xff\xff\xff")?;
-        record_info_list[len - 1].offset = self.inner.stream_position()? as u32;
+
+        record_info_list[index].offset = self.inner.stream_position()? as u32;
+        index += 1;
         self.inner.write_all(&fcis(text_length as u32))?;
 
-        // 还有个EOF
+        // 还有个EOF;EOF用于确定最后一个有意义的record的边界
+        record_info_list[index].offset = self.inner.stream_position()? as u32;
         self.inner.write_all(b"\xE9\x8E\x0D\x0A")?;
 
         // 重新写入offset

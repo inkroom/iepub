@@ -111,7 +111,7 @@ pub(crate) fn generate_text_img_xml(html: &str, assets: &[String]) -> Vec<u8> {
                 let ass = assets.iter().enumerate().find(|(_, v)| v == &p);
                 if let Some(ass) = ass {
                     // 有对应的src，则去除src值，然后加入recindex
-                    text.append(&mut format!("recindex='{}'", ass.0).as_bytes().to_vec());
+                    text.append(&mut format!("recindex='{}'", ass.0 + 1).as_bytes().to_vec());
 
                     index += len - 1;
                 } else {
@@ -424,7 +424,7 @@ mod tests {
 
         let v = generate_text_img_xml(html, &assets);
         assert_eq!(
-            html.replace(r#"src="2.jpg""#, "recindex='0'"),
+            html.replace(r#"src="2.jpg""#, "recindex='1'"),
             String::from_utf8(v).unwrap()
         );
 
@@ -435,7 +435,7 @@ mod tests {
 
         let v = generate_text_img_xml(html, &assets);
         assert_eq!(
-            html.replace(r#"src="2.jpg""#, "recindex='0'"),
+            html.replace(r#"src="2.jpg""#, "recindex='1'"),
             String::from_utf8(v).unwrap()
         );
 
@@ -445,7 +445,7 @@ mod tests {
 
         let v = generate_text_img_xml(html, &assets);
         assert_eq!(
-            html.replace(r#"src='2.jpg'"#, "recindex='0'"),
+            html.replace(r#"src='2.jpg'"#, "recindex='1'"),
             String::from_utf8(v).unwrap()
         );
 
@@ -455,7 +455,7 @@ mod tests {
 
         let v = generate_text_img_xml(html, &assets);
         assert_eq!(
-            html.replace(r#"src='1.jpg'"#, "recindex='0'"),
+            html.replace(r#"src='1.jpg'"#, "recindex='1'"),
             String::from_utf8(v).unwrap()
         );
     }
