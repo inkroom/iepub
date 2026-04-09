@@ -10,7 +10,6 @@ use crate::prelude::*;
 
 use super::{
     common,
-    core::info,
     html::{to_html, to_nav_html, to_opf, to_toc_xml},
 };
 
@@ -122,11 +121,7 @@ impl<T: Write + Seek> EpubWriter<T> {
 
         self.write_file(
             common::OPF,
-            to_opf(
-                book,
-                format!("{}-{}", info::PROJECT_NAME, info::PKG_VERSION).as_str(),
-            )
-            .as_bytes(),
+            to_opf(book, crate::common::info::PKG_NAME).as_bytes(),
         )?;
 
         Ok(())

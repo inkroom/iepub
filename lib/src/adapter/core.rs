@@ -1,5 +1,5 @@
 use crate::{
-    common::{IError, IResult},
+    common::{self, IError, IResult},
     mobi::{builder::MobiBuilder, core::MobiAssets, image::get_attr_value},
     prelude::{EpubBook, EpubBuilder, EpubHtml, EpubNav, MobiBook, MobiHtml, MobiNav},
 };
@@ -292,7 +292,11 @@ pub fn epub_to_mobi(epub: &mut EpubBook) -> IResult<MobiBook> {
         builder = builder.with_contributor(v);
     }
     if let Some(v) = epub.creator() {
-        builder = builder.with_creator(v);
+        if v.contains(common::info::PROJECT_NAME) {
+            builder = builder.with_creator(v);
+        } else {
+            builder = builder.with_creator(format!("{v} {}", common::info::PKG_NAME));
+        }
     }
     if let Some(v) = epub.description() {
         builder = builder.with_description(v);
@@ -343,10 +347,10 @@ pub fn epub_to_mobi(epub: &mut EpubBook) -> IResult<MobiBook> {
         builder = builder.add_nav(ele);
     }
     // 静态资源
-    for ele in epub.assets_mut().filter(|f|f.file_name()!="toc.ncx") {
+    for ele in epub.assets_mut().filter(|f| f.file_name() != "toc.ncx") {
         let data = ele.data_mut().ok_or(IError::Unknown)?.to_vec();
         builder = builder.add_assets(ele.file_name(), data);
-    } 
+    }
     // 添加文本
     for (html, _) in chap_temp {
         builder = builder.add_chapter(html);

@@ -31,11 +31,7 @@ pub fn write_metadata<P: AsRef<Path> + ?Sized>(file: &P, book: &mut EpubBook) ->
         // 首先写入元数据文件
         writer.write_file(
             common::OPF,
-            to_opf(
-                book,
-                format!("{}-{}", core::info::PROJECT_NAME, core::info::PKG_VERSION).as_str(),
-            )
-            .as_bytes(),
+            to_opf(book, crate::common::info::PKG_NAME).as_bytes(),
         )?;
 
         // toc文件也需要重写一份

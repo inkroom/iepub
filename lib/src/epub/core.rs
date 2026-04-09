@@ -41,9 +41,6 @@ impl From<String> for Direction {
     }
 }
 
-pub(crate) mod info {
-    include!(concat!(env!("OUT_DIR"), "/version.rs"));
-}
 
 macro_rules! epub_base_field{
     (

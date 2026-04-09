@@ -10,17 +10,19 @@ use proc_macro::TokenStream;
 /// ```compile_fail
 /// use iepub_derive::option_string_method;
 /// // 访问成员 self.info.k
-/// option_string_method!(info,k);
+/// option_string_method!("", info,k);
 /// // 访问成员 self.k
-/// option_string_method!(k);
+/// option_string_method!("", k);
 /// ```
 ///
 #[proc_macro]
 pub fn option_string_method(input: TokenStream) -> TokenStream {
     let s = input.to_string();
-    let v: Vec<&str> = s.split(',').collect();
-
-    let m = r#"pub fn set_{method}<T:  AsRef<str>>(&mut self, {method}: T) {
+    let mut v: Vec<&str> = s.split(',').collect();
+    let doc = v.remove(0);
+    let m = r#"
+    #[doc = {doc}]
+    pub fn set_{method}<T:  AsRef<str>>(&mut self, {method}: T) {
         if let Some( c) = &mut self.{prefix}{method} {
             c.clear();
             c.push_str({method}.as_ref());
@@ -28,13 +30,16 @@ pub fn option_string_method(input: TokenStream) -> TokenStream {
             self.{prefix}{method} = Some(String::from({method}.as_ref()));
         }
     }
+    #[doc = {doc}]
     pub fn with_{method}<T:  AsRef<str>>(mut self, {method}: T) ->Self {
         self.set_{method}({method}.as_ref());
         self
     }
+    #[doc = {doc}]
     pub fn {method}(&self) -> Option<&str> {
         self.{prefix}{method}.as_ref().map(|x|x.as_str())
-    }"#;
+    }"#
+    .replace("{doc}", doc);
     if v.len() == 2 {
         let r = m
             .replace("{prefix}", format!("{}.", v[0].trim()).as_str().trim())

@@ -238,7 +238,8 @@ pub(crate) enum EXTHRecordType {
     ///  "true"
     ZeroMargin = 128,
     MetadataResourceUri = 129,
-    Unknown0 = 131,
+    /// 固定为0?
+    Kf8UnknownCount = 131,
     ///  "true"
     Unknown1 = 132,
     /// As text
@@ -280,6 +281,7 @@ pub(crate) enum EXTHRecordType {
     Language = 524,
     ///  I found horizontal-lr in this record.
     WritingMode = 525,
+    OverrideKindleFonts = 528,
     Unknown8 = 536,
     ///  Some Unix timestamp.
     Unknown9 = 542,
@@ -288,7 +290,7 @@ pub(crate) enum EXTHRecordType {
 }
 impl Default for EXTHRecordType {
     fn default() -> Self {
-        EXTHRecordType::Unknown0
+        EXTHRecordType::Unknown1
     }
 }
 impl EXTHRecordType {
@@ -331,7 +333,7 @@ impl From<u32> for EXTHRecordType {
             127 => EXTHRecordType::ZeroGutter,
             128 => EXTHRecordType::ZeroMargin,
             129 => EXTHRecordType::MetadataResourceUri,
-            131 => EXTHRecordType::Unknown0,
+            131 => EXTHRecordType::Kf8UnknownCount,
             132 => EXTHRecordType::Unknown1,
             200 => EXTHRecordType::DictionaryShortName,
             201 => EXTHRecordType::CoverOffset,
@@ -360,10 +362,11 @@ impl From<u32> for EXTHRecordType {
             503 => EXTHRecordType::UpdatedTitle,
             524 => EXTHRecordType::Language,
             505 => EXTHRecordType::WritingMode,
+            528 => EXTHRecordType::OverrideKindleFonts,
             536 => EXTHRecordType::Unknown8,
             542 => EXTHRecordType::Unknown9,
             547 => EXTHRecordType::InMemory,
-            _ => EXTHRecordType::Unknown0,
+            _ => EXTHRecordType::Unknown1,
         }
     }
 }

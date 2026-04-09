@@ -678,7 +678,9 @@ pub fn get_css_content_url<T: AsRef<str> + ?Sized>(css: &T) -> Vec<&str> {
 
     res
 }
-
+pub(crate) mod info {
+    include!(concat!(env!("OUT_DIR"), "/version.rs"));
+}
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::common::{get_css_content_url, urldecode_enhanced, DateTimeFormater};

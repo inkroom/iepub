@@ -270,17 +270,42 @@ impl EXTHHeader {
         if let Some(v) = book.contributor() {
             record_list.push(gene(super::common::EXTHRecordType::Contributor, v));
         }
+        record_list.push(EXTHRecord {
+            _type: super::common::EXTHRecordType::HasFakeCover,
+            len: 12,
+            data: [0, 0, 0, 0].to_vec(),
+        });
+        record_list.push(EXTHRecord {
+            _type: super::common::EXTHRecordType::CreatorSoftware,
+            len: 12,
+            data: [0, 0, 0, 201].to_vec(),
+        });
+        record_list.push(EXTHRecord {
+            _type: super::common::EXTHRecordType::CreatorMajorVersion,
+            len: 12,
+            data: [0, 0, 0, 1].to_vec(),
+        });
+        record_list.push(EXTHRecord {
+            _type: super::common::EXTHRecordType::CreatorMinorVersion,
+            len: 12,
+            data: [0, 0, 0, 2].to_vec(),
+        });
+        record_list.push(EXTHRecord {
+            _type: super::common::EXTHRecordType::CreatorBuildNumber,
+            len: 12,
+            data: [0, 0, 0b10000010, 0b00011011].to_vec(), // 33307
+        });
 
         if book.cover().is_some() {
             let len = book.assets().len() as u32;
             record_list.push(EXTHRecord {
                 _type: crate::mobi::common::EXTHRecordType::CoverOffset,
-                len: (8 + 4) as u32,
+                len: 12,
                 data: len.to_be_bytes().to_vec(), // 封面写到最后
             });
             record_list.push(EXTHRecord {
                 _type: crate::mobi::common::EXTHRecordType::ThumbOffset,
-                len: (8 + 4) as u32,
+                len: 12,
                 data: len.to_be_bytes().to_vec(), // 封面写到最后
             });
         }
@@ -724,7 +749,7 @@ impl<T: Write + Seek> MobiWriter<T> {
             input_language: 0,
             output_language: 0,
             min_version: 6,
-            first_image_index: first_non_text_record_idx as u32 ,
+            first_image_index: first_non_text_record_idx as u32,
             huffman_record_offset: 0,
             huffman_record_count: 0,
             huffman_table_offset: 0,
@@ -787,7 +812,7 @@ impl<T: Write + Seek> MobiWriter<T> {
             book,
             text_length,
             last_text_record_idx,
-            first_non_text_record_idx ,
+            first_non_text_record_idx,
         )?;
 
         record_info_list[0].offset = start as u32;
