@@ -46,7 +46,7 @@ mod commands {
         use crate::cli::command::epub::*;
 
         // 注册子命令
-        #[cfg(feature = "md-5")]
+      
         register_command!(
             GetCover,
             BookInfoGetter,
@@ -58,18 +58,6 @@ mod commands {
             Concat,
             Replace,
             Optimize
-        );
-        #[cfg(not(feature = "md-5"))]
-        register_command!(
-            GetCover,
-            BookInfoGetter,
-            BookInfoSetter,
-            NavScanner,
-            GetImage,
-            GetChapter,
-            FormatConvert,
-            Concat,
-            Replace
         );
     }
     pub(crate) mod mobi {

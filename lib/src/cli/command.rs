@@ -122,6 +122,7 @@ fn read_book(file: &str) -> IResult<OwnBook> {
 
 pub(crate) mod epub {
 
+    use std::hash::Hasher;
     use std::vec;
 
     use crate::cli::arg::OptUtil;
@@ -336,7 +337,6 @@ pub(crate) mod epub {
 
                     let mut out_book = builder.append_title(append_title).book().unwrap();
                     // 瘦身，去除重复文件
-                    #[cfg(feature = "md-5")]
                     {
                         let op = Optimize {};
                         op.handle(
@@ -939,7 +939,6 @@ pub(crate) mod epub {
             Vec::new()
         }
     );
-    #[cfg(feature = "md-5")]
     create_command!(
         Optimize,
         "optimize",
@@ -979,20 +978,18 @@ pub(crate) mod epub {
             _args: &[String],
             release_mem: bool,
         ) {
-            use md5::Digest;
-            use md5::Md5;
             use std::collections::HashMap;
             if let Book::EPUB(book) = book {
                 let mut hash_map: HashMap<String, String> = HashMap::new();
                 let mut need_replace = HashMap::new();
-                // 遍历资源文件，计算md5值
+                // 遍历资源文件，计算hash值
                 let mut rm = Vec::new();
                 for (index, ele) in book.assets_mut().enumerate() {
                     if let Some(data) = ele.data_mut() {
-                        let mut hasher = Md5::new();
-                        hasher.update(data);
+                        let mut hasher = std::hash::DefaultHasher::new();
+                        hasher.write(data);
 
-                        let result = hasher.finalize();
+                        let result = hasher.finish();
                         let v = format!("{:x}", result);
                         if let Some(first_file_name) = hash_map.get(v.as_str()) {
                             need_replace.insert(

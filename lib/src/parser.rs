@@ -1,5 +1,4 @@
-use crate::common::{ContentItem, ContentType};
-use anyhow::{anyhow, Result};
+use crate::common::{ContentItem, ContentType, IError, IResult};
 use quick_xml::{events::Event, reader::Reader};
 
 /// HTML 解析器
@@ -20,7 +19,7 @@ impl HtmlParser {
     }
 
     /// 解析 HTML 字符串
-    pub fn parse(&mut self, html: &str) -> Result<()> {
+    pub fn parse(&mut self, html: &str) -> IResult<()> {
         let mut reader = Reader::from_str(html);
         reader.config_mut().trim_text(false);
         reader.config_mut().expand_empty_elements = true;
@@ -163,7 +162,7 @@ impl HtmlParser {
                 }
 
                 Err(e) => {
-                    return Err(anyhow!("解析错误: {:?}", e));
+                    return Err(IError::Xml(e));
                 }
 
                 _ => {}
