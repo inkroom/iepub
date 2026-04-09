@@ -9,9 +9,9 @@ mod epub;
 mod mobi;
 pub mod parser;
 pub mod path;
-pub use crate::common::DateTimeFormater;
 pub use crate::common::ContentItem;
 pub use crate::common::ContentType;
+pub use crate::common::DateTimeFormater;
 
 pub mod prelude {
     pub use crate::common::IError;

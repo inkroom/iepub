@@ -121,7 +121,7 @@ fn read_book(file: &str) -> IResult<OwnBook> {
 }
 
 pub(crate) mod epub {
-    
+
     use std::vec;
 
     use crate::cli::arg::OptUtil;

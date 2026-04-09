@@ -324,7 +324,7 @@ mod tests {
 
         let mut parser = HtmlParser::new();
         parser.parse(html).unwrap();
-        
+
         assert!(parser.items.len() > 0);
 
         let paragraphs = parser.extract_paragraphs();

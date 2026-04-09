@@ -5,3 +5,4 @@ Cargo.lock
 *.iml
 Dockerfile
 Dockerfile.dev
+.devcontainer.json

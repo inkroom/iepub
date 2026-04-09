@@ -1255,11 +1255,8 @@ html
         chap.next();
         chap.next();
         let nt = chap.next().unwrap();
-        println!("nt = {}",nt.title());
-        assert_eq!(
-            9343,
-            nt.data_mut().unwrap().to_vec().len()
-        );
+        println!("nt = {}", nt.title());
+        assert_eq!(9343, nt.data_mut().unwrap().to_vec().len());
 
         for i in chap {
             if let Some(p) = i.parser() {

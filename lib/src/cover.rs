@@ -6,7 +6,7 @@ use crate::common::IResult;
 #[cfg(feature = "cover")]
 mod text_width {
     use ab_glyph::PxScale;
-    use image::{RgbImage, GenericImageView, Rgba};
+    use image::{GenericImageView, RgbImage, Rgba};
 
     pub struct ImageCrop {
         pub original: RgbImage,

@@ -149,7 +149,7 @@ impl MOBIHeader {
         header.drm_size = reader.read_u32()?;
         header.drm_flags = reader.read_u32()?;
         let _ = reader.read_u64()?;
-         let _ = reader.read_u32()?;
+        let _ = reader.read_u32()?;
         header.first_content_record_number = reader.read_u16()?;
         header.last_content_record_number = reader.read_u16()?;
         let _ = reader.read_u32()?;
@@ -268,7 +268,7 @@ impl EXTHHeader {
                 super::common::EXTHRecordType::Publisher => {
                     info.publisher = Some(simple_utf8!(ele.data));
                 }
-                super::common::EXTHRecordType::Description  => {
+                super::common::EXTHRecordType::Description => {
                     info.description = Some(simple_utf8!(ele.data));
                 }
                 super::common::EXTHRecordType::Isbn => {
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     #[ignore = "only for dev"]
     fn test_header() {
-        let path = std::env::current_dir().unwrap().join("demo.mobi");
+        let path = std::env::current_dir().unwrap().join("../worked.mobi");
         println!("dir {:?}", path);
         let fs = std::fs::File::open(path.to_str().unwrap()).unwrap();
         let mut h = MobiReader::new(fs).unwrap();

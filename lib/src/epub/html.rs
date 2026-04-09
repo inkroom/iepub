@@ -61,10 +61,10 @@ pub(crate) fn to_html(chap: &mut EpubHtml, append_title: bool, dir: &Option<Dire
 {body}
   </body>
 </html>"#,
-        chap
-            .body_attribute
+        chap.body_attribute
             .as_ref()
-            .and_then(|f| String::from_utf8(f.clone()).ok()).unwrap_or_default(),
+            .and_then(|f| String::from_utf8(f.clone()).ok())
+            .unwrap_or_default(),
         if append_title {
             format!(r#"<h1 style="text-align: center">{}</h1>"#, title)
         } else {
@@ -187,7 +187,7 @@ fn write_metadata(
     if let Some(v) = book.date() {
         xml.create_element("dc:date")
             .with_attribute(("id", "date"))
-            .with_attribute(("opf:event","publication"))
+            .with_attribute(("opf:event", "publication"))
             .write_text_content(BytesText::new(v))?;
     }
 
