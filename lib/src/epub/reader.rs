@@ -603,6 +603,16 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         book.set_generator(g.as_str());
     }
 
+    // 处理toc文件
+    if let Some((index, _)) = book
+        .assets()
+        .enumerate()
+        .find(|f| f.1.id() == "toc" || f.1.id() == "ncx")
+    {
+        let toc = book.remove_assets(index);
+        book.set_toc(toc);
+    }
+
     Ok(())
 }
 
@@ -907,7 +917,7 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
 
                 {
                     // 读取导航
-                    if let Some(toc) = book.assets().find(|s| s.id() == "ncx" || s.id() == "toc") {
+                    if let Some(toc) = book.toc() {
                         let t = crate::path::Path::system(path.as_str())
                             .pop()
                             .join(toc.file_name())
@@ -1143,15 +1153,12 @@ mod tests {
         assert_eq!(b.publisher(), nb.publisher());
         assert_eq!(b.identifier(), nb.identifier());
         assert_eq!(b.last_modify(), nb.last_modify());
-        // 多出来一个 导航 toc.ncx
-        println!("nb {:?}", nb.assets());
-        println!("{:?}", b.assets());
 
         println!("version = {}", b.version());
 
-        // 多出来的一个是导航 nav.xhtml，还有toc.ncx TODO 2025-05-28 正常只应该 +1
-        assert_eq!(b.assets().len() + 2, nb.assets().len());
-        // 多出来的一个是导航 nav.xhtml，还有toc.ncx
+        // 多出来的一个是导航 nav.xhtml
+        assert_eq!(b.assets().len() + 1, nb.assets().len());
+        // 多出来的一个是导航 nav.xhtml
         assert_eq!(b.chapters().len() + 1, nb.chapters().len());
         assert_ne!(0, b.assets_mut().next().unwrap().data_mut().unwrap().len());
 
@@ -1424,5 +1431,26 @@ html
 
         let book = read_from_file(name).unwrap();
         assert!(book.cover().is_some());
+    }
+
+    /// 
+    /// toc.ncx 不再作为assets的一部分，也就不对调用方公开了
+    /// 
+    #[test]
+    fn test_remove_toc_from_assets() {
+        let name = if std::path::Path::new("target").exists() {
+            "target/cover_from_guide.epub"
+        } else {
+            "../target/cover_from_guide.epub"
+        };
+        let url = "https://github.com/user-attachments/files/23620295/05.zip";
+        download_epub_file(name, url);
+
+        let book = read_from_file(name).unwrap();
+
+        assert!(book.toc().is_some());
+
+        assert!(!book.assets().any(|f| f.id() == "toc" || f.id() == "ncx"));
+        assert_eq!(10, book.nav().len());
     }
 }

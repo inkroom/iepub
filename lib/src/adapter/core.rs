@@ -347,7 +347,7 @@ pub fn epub_to_mobi(epub: &mut EpubBook) -> IResult<MobiBook> {
         builder = builder.add_nav(ele);
     }
     // 静态资源
-    for ele in epub.assets_mut().filter(|f| f.file_name() != "toc.ncx") {
+    for ele in epub.assets_mut() {
         let data = ele.data_mut().ok_or(IError::Unknown)?.to_vec();
         builder = builder.add_assets(ele.file_name(), data);
     }

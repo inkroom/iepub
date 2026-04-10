@@ -672,6 +672,8 @@ pub struct EpubBook {
    pub(crate) direction: Option<Direction>,
    /// 语言
    language: Option<String>,
+   /// toc.ncx
+   toc: Option<EpubAssets>,
 }
 }
 
@@ -720,6 +722,14 @@ impl EpubBook {
 
 // 元数据
 impl EpubBook {
+    pub(crate) fn toc(&self) -> Option<&EpubAssets> {
+        self.toc.as_ref()
+    }
+
+    pub(crate) fn set_toc(&mut self, toc: EpubAssets) {
+        self.toc = Some(toc)
+    }
+
     pub fn set_direction(&mut self, dir: Direction) {
         self.direction = Some(dir);
     }
@@ -840,8 +850,8 @@ impl EpubBook {
         self.assets.iter_mut()
     }
 
-    pub fn remove_assets(&mut self, index: usize) {
-        self.assets.remove(index);
+    pub fn remove_assets(&mut self, index: usize)->EpubAssets {
+        self.assets.remove(index)
     }
 
     pub fn add_chapter(&mut self, mut chap: EpubHtml) {

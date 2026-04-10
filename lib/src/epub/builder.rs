@@ -306,7 +306,7 @@ impl EpubBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::{EpubHtml, EpubLink, LinkRel};
+    use crate::prelude::{EpubHtml, EpubLink, LinkRel, read_from_file};
 
     use super::EpubBuilder;
 
@@ -361,5 +361,13 @@ mod tests {
                 "../target/build.epub"
             })
             .unwrap();
+
+        let book = read_from_file(if std::path::Path::new("target").exists() {
+                "target/build.epub"
+            } else {
+                "../target/build.epub"
+            }).unwrap();
+
+            assert_eq!(2,book.nav().len());
     }
 }
