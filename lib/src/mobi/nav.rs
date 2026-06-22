@@ -147,7 +147,7 @@ pub(crate) struct NavFilePos {
     /// 占位符长度
     pub(crate) length: usize,
     /// 对应的nav id
-    id: usize,
+    pub(crate) id: usize,
     /// 对应的章节id
     pub(crate) chap_id: usize,
     pub(crate) child: Vec<NavFilePos>,

@@ -79,6 +79,7 @@ pub(crate) struct MOBIDOCHeader {
     ///   0 == no encryption, 1 = Old Mobipocket Encryption, 2 = Mobipocket Encryption
     pub(crate) encrypt_type: u16,
 }
+
 #[derive(Default, Debug)]
 pub(crate) struct MOBIHeader {
     // the characters M O B I
@@ -164,11 +165,7 @@ pub(crate) struct MOBIHeader {
     pub(crate) first_content_record_number: u16,
     /// Number of last image record or number of last text record if it contains no images. Includes Image, DATP, HUFF, DRM.
     pub(crate) last_content_record_number: u16,
-    // FCIS record count? Use 0x00000001.
-    // unknown_3: u32,
     pub(crate) fcis_record_number: u32,
-    // Use 0x00000001.
-    // unknown_4: u32,
     pub(crate) flis_record_number: u32,
     // Use 0x00000001.flis record count?
     // unknown_5: u32,
@@ -191,6 +188,7 @@ pub(crate) struct MOBIHeader {
     /// (If not 0xFFFFFFFF)The record number of the first INDX record created from an ncx file.
     pub(crate) indx_record_offset: u32,
 }
+
 #[derive(Debug, Clone)]
 #[derive(Default)]
 pub(crate) enum EXTHRecordType {
@@ -389,6 +387,21 @@ pub(crate) struct EXTHHeader {
     /// 不定长度的 record,
     pub(crate) record_list: Vec<EXTHRecord>, // 多余的字节均为无用填充，跳过即可
 }
+// the characters T A G X
+// identifier: [u8; 4],
+#[derive(Default, Debug)]
+pub(crate) struct TAGXRecord {
+    /// the length of the TAGX header, including the previous 4 bytes
+    pub(crate) len: u32,
+    /// the number of control bytes 
+    pub(crate) control_byte_count:u32,
+    /// the tag table entries (len = header length - 12, must be multiple of 4 bytes) 
+    pub(crate) tag_table: Vec<u8>,
+}
+
+
+pub(crate) type Record = Vec<u8>;
+
 
 /// 格式化时间戳
 pub(crate) fn do_time_format(value: u32) -> String {

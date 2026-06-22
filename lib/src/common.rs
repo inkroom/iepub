@@ -683,6 +683,16 @@ pub(crate) mod info {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::common::{get_css_content_url, urldecode_enhanced, DateTimeFormater};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn download_lock() -> MutexGuard<'static, ()> {
+        DOWNLOAD_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     pub fn get_req_mem(url: &str) -> Vec<u8> {
         get_req(url).send().unwrap().bytes().unwrap().to_vec()
@@ -704,6 +714,7 @@ pub(crate) mod tests {
     pub fn download_epub_file(name: &str, url: &str) {
         use super::IError;
         use std::borrow::Cow;
+        let _lock = download_lock();
         if name.contains("/") {
             let p = std::path::Path::new(&name);
 
@@ -740,6 +751,7 @@ pub(crate) mod tests {
     pub fn download_zip_file(name: &str, url: &str) -> String {
         use super::IError;
         use std::{borrow::Cow, io::Read};
+        let _lock = download_lock();
         let out = if std::path::Path::new("target").exists() {
             format!("target/{name}")
         } else {

@@ -12,7 +12,7 @@ use std::{
 
 use crate::{
     common::{BookInfo, IError, IResult},
-    mobi::core::MobiNav,
+    mobi::{common::TAGXRecord, core::MobiNav},
 };
 
 use super::{
@@ -284,6 +284,28 @@ impl EXTHHeader {
             }
         }
         Ok(info)
+    }
+}
+
+impl TAGXRecord {
+    pub fn load<T>(reader: &mut T) -> IResult<Option<Self>>
+    where
+        T: ReadCount,
+    {
+        let mut v = Self::default();
+
+        if "TAGX" != reader.read_string(4)? {
+            return Err(IError::InvalidArchive(Cow::from("not a exth")));
+        }
+
+        v.len = reader.read_u32()?;
+        v.control_byte_count = reader.read_u32()?;
+
+        reader
+            .take((v.len - 12) as u64)
+            .read_to_end(&mut v.tag_table)?;
+
+        Ok(Some(v))
     }
 }
 
@@ -759,11 +781,15 @@ fn uncompression_lz77(data: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Seek;
+    use std::{
+        collections::HashMap,
+        io::{BufReader, Seek, SeekFrom},
+    };
 
-    use crate::mobi::{common::do_time_format, reader::is_mobi};
-
-    use super::MobiReader;
+    use crate::mobi::{
+        common::{EXTHHeader, MOBIDOCHeader, MOBIHeader, PDBHeader, do_time_format},
+        reader::{MobiReader, is_mobi},
+    };
 
     #[test]
     fn test_is_mobi() {
