@@ -448,7 +448,7 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                 return Err(IError::Xml(e));
             }
             Ok(Event::Start(body)) => match body.name().as_ref() {
-                b"html" => {
+                "html" => {
                     parent.push("html");
                     // 尝试获取lang
                     if let Ok(href) = body.try_get_attribute("lang") {
@@ -476,18 +476,18 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                         }
                     }
                 }
-                b"head" => {
+                "head" => {
                     if parent.len() != 1 || parent[0] != "html" {
                         return Err(IError::Unknown);
                     }
                     parent.push("head");
                 }
-                b"style" => {
+                "style" => {
                     if parent.last().map(|f| f == &"head").unwrap_or(false) {
                         parent.push("style");
                     }
                 }
-                b"link" => {
+                "link" => {
                     if parent.last().map(|f| f == &"head").unwrap_or(false) {
                         // 读取link标签
                         if let Ok(href) = body.try_get_attribute("href") {
@@ -518,19 +518,19 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                         }
                     }
                 }
-                b"title" => {
+                "title" => {
                     if parent.len() == 2 && parent[0] == "html" && parent[1] == "head" {
                         parent.push("title");
                     }
                 }
-                b"body" => {
-                    let a = body.attributes_raw().to_vec();
+                "body" => {
+                    let a = body.attributes_raw().as_bytes().to_vec();
                     if !a.is_empty() {
                         body_attribute = Some(a);
                     }
                     body_data = reader
                         .read_text(body.to_end().to_owned().name())
-                        .map(|f| f.to_vec())
+                        .map(|f| f.as_bytes().to_vec())
                         .map_err(IError::Xml)
                         .ok();
                     if body_data.is_some() {
@@ -540,27 +540,27 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                 _ => {}
             },
             Ok(Event::End(e)) => match e.name().as_ref() {
-                b"title" => {
+                "title" => {
                     if !parent.is_empty() {
                         parent.remove(parent.len() - 1);
                     }
                 }
-                b"head" => {
+                "head" => {
                     if !parent.is_empty() {
                         parent.remove(parent.len() - 1);
                     }
                 }
-                b"body" => {
+                "body" => {
                     if !parent.is_empty() {
                         parent.remove(parent.len() - 1);
                     }
                 }
-                b"html" => {
+                "html" => {
                     if !parent.is_empty() {
                         parent.remove(parent.len() - 1);
                     }
                 }
-                b"style" => {
+                "style" => {
                     if parent.last().map(|f| f == &"style").unwrap_or(false) {
                         parent.remove(parent.len() - 1);
                     }
@@ -568,17 +568,18 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
                 _ => {}
             },
             Ok(Event::Text(e)) => {
+                let t = e.into_inner();
                 if parent.len() == 3 && parent[2] == "title" {
-                    title.push_str(e.decode().map_err(IError::Encoding)?.deref());
+                    title.push_str(t.as_ref());
                 }
                 if parent.last().map(|f| f == &"style").unwrap_or(false) {
                     // css 样式，应该不会有转义代码出现，就不考虑了
-                    style.push_str(e.decode().map_err(IError::Encoding)?.deref());
+                    style.push_str(t.as_ref());
                 }
             }
             Ok(Event::GeneralRef(e)) => {
                 if parent.len() == 3 && parent[2] == "title" {
-                    let t = e.decode().map_err(IError::Encoding)?;
+                    let t = e.into_inner();
                     if t == "amp" {
                         title.push('&');
                     } else if t == "lt" {
@@ -595,16 +596,24 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
             _ => {}
         }
     }
+    let has_body = body_data.is_some();
     if let Some(mut b) = body_data {
         if let Some(id) = id {
             // 重新读取数据
-            content.append(&mut get_section_from_html(
-                String::from_utf8(b).unwrap().as_str(),
-                id,
-            )?);
+            let mut section =
+                get_section_from_html(String::from_utf8_lossy(b.as_slice()).as_ref(), id)?;
+            if section.is_empty() {
+                // 锚点在文档里不存在时给出整篇正文，不要让章节空掉
+                section = b;
+            }
+            content.append(&mut section);
         } else {
             content.append(&mut b);
         }
+    }
+    if content.is_empty() && !has_body && !html.contains("<html") {
+        // 没有 `<body>` 的文档（例如作为 spine 项的 SVG 书页），原文就是正文
+        content = html.as_bytes().to_vec();
     }
     Ok(HtmlInfo {
         title: title.trim().to_string(),
@@ -622,50 +631,71 @@ pub(crate) fn get_html_info(html: &str, id: Option<&str>) -> IResult<HtmlInfo> {
 }
 
 /// epub3 将所有正文放到一个文件里，不同的section代表不同的章节
+///
+/// 锚点指向的不一定是 `<section>`，`<div>`、`<h1>`、`<p>` 都可以带 id；
+/// 这里按 id 找到元素本身，返回包含它自身标记的原始片段，定位不到时返回空由调用方兜底。
 fn get_section_from_html(body: &str, id: &str) -> IResult<Vec<u8>> {
+    use quick_xml::events::BytesStart;
+    use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
-    let mut content = Vec::new();
     let mut reader = Reader::from_str(body);
-    // reader.config_mut().trim_text(true);
+    reader.config_mut().check_end_names = false;
     let mut buf = Vec::new();
+    // 属性名可能带命名空间前缀，比较时要去掉
+    let matched = |e: &BytesStart| {
+        e.attributes().flatten().any(|a| {
+            crate::epub::reader::bare_name(a.key.as_ref()) == "id"
+                && a.value.as_ref() == id
+        })
+    };
+    // 事件起始前的字节位置，回退到最近的 `<`，避免落在空白缩进上
+    let start_of = |from: usize| -> usize {
+        let from = from.min(body.len());
+        from + body[from..].find('<').unwrap_or(0)
+    };
     loop {
+        let before = reader.buffer_position() as usize;
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Eof) => {
-                break;
-            }
+            Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(IError::Xml(e));
             }
-            Ok(Event::Start(body)) => {
-                if body.name().as_ref() == b"section"
-                    && body
-                        .try_get_attribute("id")
-                        .map_err(|_e| IError::Unknown)
-                        .and_then(|f| f.ok_or(IError::Unknown))
-                        .map(|f| {
-                            f.normalized_value(XmlVersion::Implicit1_0)
-                                .map_or_else(|_| String::new(), |v| v.to_string())
-                        })
-                        .map(|f| f == id)
-                        .unwrap_or(false)
-                {
-                    let v = reader
-                        .read_text(body.to_end().to_owned().name())
-                        .map(|f| f.to_vec())
-                        .map_err(IError::Xml)
-                        .ok();
-
-                    if let Some(mut v) = v {
-                        content.append(&mut v);
-                        break;
+            Ok(Event::Empty(e)) if matched(&e) => {
+                // 自闭元素，整个标签就是它的内容
+                let start = start_of(before);
+                let end = (reader.buffer_position() as usize).max(start).min(body.len());
+                return Ok(body.get(start..end).unwrap_or_default().as_bytes().to_vec());
+            }
+            Ok(Event::Start(e)) if matched(&e) => {
+                let name = e.name().as_ref().to_string();
+                let start = start_of(before);
+                let mut depth = 1usize;
+                let mut end = body.len();
+                loop {
+                    match reader.read_event_into(&mut buf) {
+                        Ok(Event::Eof) => break,
+                        Err(err) => {
+                            return Err(IError::Xml(err));
+                        }
+                        Ok(Event::Start(x)) if x.name().as_ref() == name => depth += 1,
+                        Ok(Event::End(x)) if x.name().as_ref() == name => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = (reader.buffer_position() as usize).min(body.len());
+                                break;
+                            }
+                        }
+                        _ => {}
                     }
                 }
+                return Ok(body.get(start..end).unwrap_or_default().as_bytes().to_vec());
             }
             _ => {}
         }
+        buf.clear();
     }
-    Ok(content)
+    Ok(Vec::new())
 }
 
 #[cfg(test)]
@@ -1117,7 +1147,8 @@ ok
 
         let info = get_html_info(html.as_str(), Some("pgepubid00495")).unwrap();
 
-        assert_eq!(3324, info.content.len());
+        // 分片章节保留 `<section>` 自身标记（含 id 与 epub:type），不再是去掉标记的纯文本
+        assert_eq!(3387, info.content.len());
 
         // 测试lang
 

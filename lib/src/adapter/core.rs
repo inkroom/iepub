@@ -194,7 +194,7 @@ fn epub_nav_to_mobi_nav(
 
 /// 处理图片地址，把可能存在的相对路径换成绝对路径
 fn convert_epub_html_img(html: &[u8], path: &str) -> Vec<u8> {
-    let current = crate::path::Path::system(path).pop();
+    let current = crate::path::Path::zip(path).pop();
     let v = |v| {
         let path = String::from_utf8(v).unwrap_or_default();
         // 修正路径
@@ -444,7 +444,7 @@ pub mod concat {
             String::from_utf8(v)
                 .ok()
                 .map(|f| {
-                    path::Path::system(old_chapter_file.as_str())
+                    path::Path::zip(old_chapter_file.as_str())
                         .pop()
                         .join(f.as_str())
                         .to_str()
@@ -453,7 +453,7 @@ pub mod concat {
                 .map(|f| {
                     format!(
                         r#""{}""#,
-                        crate::path::Path::system(new_chapter_file)
+                        crate::path::Path::zip(new_chapter_file)
                             .pop()
                             .releative(f.as_str())
                     )
@@ -528,14 +528,14 @@ pub mod concat {
 
                     let mut n_css = css.clone();
                     for u in url {
-                        let old = crate::path::Path::system(ele.file_name())
+                        let old = crate::path::Path::zip(ele.file_name())
                             .pop()
                             .join(u)
                             .to_str();
                         if let Some(new_filename) = new_asset_file_name.get(old.as_str()) {
                             n_css = n_css.replace(
                                 u,
-                                crate::path::Path::system(ele.file_name())
+                                crate::path::Path::zip(ele.file_name())
                                     .releative(new_filename.as_str())
                                     .as_str(),
                             );
@@ -608,7 +608,7 @@ pub mod concat {
             }
         } else if let Some(cover) = epub.cover() {
             let old = format!("{}.xhtml", cover.file_name());
-            let nc = crate::path::Path::system(old.as_str())
+            let nc = crate::path::Path::zip(old.as_str())
                 .pop()
                 .releative(cover.file_name());
             epub.insert_chapter(
@@ -653,7 +653,7 @@ pub mod concat {
 
             for ele in ele.links().unwrap_or_default() {
                 // link 也需要调整引用路径
-                let link_ab = path::Path::system(old.as_str())
+                let link_ab = path::Path::zip(old.as_str())
                     .pop()
                     .join(ele.href.as_str())
                     .to_str();
@@ -662,7 +662,7 @@ pub mod concat {
                     new_html.add_link(EpubLink {
                         rel: ele.rel.clone(),
                         file_type: ele.file_type.clone(),
-                        href: crate::path::Path::system(v.as_str())
+                        href: crate::path::Path::zip(v.as_str())
                             .pop()
                             .releative(n.as_str()),
                         data: Vec::new()

@@ -61,6 +61,8 @@ macro_rules! epub_base_field{
                     pub(crate) id:String,
                     pub(crate) _file_name:String,
                     pub(crate) media_type:String,
+                    /// 包文档（OPF）所在的目录前缀，带尾 `/`，例如 `EPUB/`
+                    pub(crate) prefix:String,
                     _data: Option<Vec<u8>>,
                     #[cfg(not(feature="cache"))]
                     reader:Option<std::sync::Arc<std::sync::Mutex< Box<dyn EpubReaderTrait+Send+Sync>>>>,
@@ -96,6 +98,33 @@ macro_rules! epub_base_field{
                 }
                 pub fn set_id<T:Into<String>>(&mut self,id: T){
                     self.id = id.into();
+                }
+
+                ///
+                /// manifest 的 `item@properties` 或 spine 的 `itemref@properties` 原始值
+                ///
+                /// 空格分隔，例如 `cover-image`、`page-spread-left`、`nav`
+                ///
+                pub fn properties(&self)->&str{
+                    self.properties.as_str()
+                }
+
+                ///
+                /// 是否包含某个 property 值
+                ///
+                pub fn has_property<T:AsRef<str>>(&self, name:T)->bool{
+                    self.properties.split_whitespace().any(|f| f == name.as_ref())
+                }
+
+                pub fn set_properties<T:Into<String>>(&mut self, value:T){
+                    self.properties = value.into();
+                }
+
+                ///
+                /// 取 zip 内真实的条目名（`prefix` + `file_name`）
+                ///
+                pub fn zip_name(&self)->String{
+                    format!("{}{}", self.prefix, self._file_name)
                 }
 
                 pub fn set_data(&mut self, data: Vec<u8>) {
@@ -150,6 +179,8 @@ epub_base_field! {
         pub(crate) direction: Option<Direction>,
         /// body 标签上的attribute
         pub(crate) body_attribute: Option<Vec<u8>>,
+        /// itemref@properties，例如 `page-spread-left`
+        pub(crate) properties: String,
     }
 }
 
@@ -207,11 +238,13 @@ impl EpubHtml {
         } else {
             (None, self.file_name().to_string())
         };
+        // 当前文件所在目录（带尾 `/`），用于拼接链接资源的相对引用
+        let dir = origin[..origin.rfind('/').map(|f| f + 1).unwrap_or(0)].to_string();
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && !f.is_empty() {
-            for prefix in EpubHtml::PREFIXES.iter() {
+            for prefix in prefix_candidates(self.prefix.as_str()) {
                 // 添加 前缀再次读取
-                f = format!("{prefix}{origin}");
+                f = super::reader::zip_join(prefix.as_str(), origin.as_str());
                 let d = reader.read_string(f.as_str());
                 match d {
                     Ok(v) => {
@@ -225,7 +258,8 @@ impl EpubHtml {
                             body_attribute,
                         }) = get_html_info(v.as_str(), id)
                         {
-                            if !title.is_empty() {
+                            // 已有标题（来自目录或调用方）不再被文档自身的 <title> 覆盖
+                            if !title.is_empty() && self.title.is_empty() {
                                 self.set_title(&title);
                             }
                             self.set_data(content);
@@ -245,12 +279,10 @@ impl EpubHtml {
                                     // }
                                 } else {
                                     // 本地的
-                                    let l = format!(
-                                        "{prefix}{}",
-                                        crate::path::Path::system(self._file_name.as_str())
-                                            .pop()
-                                            .join(ele.href.as_str())
-                                            .to_str()
+                                    let l = super::reader::zip_join(
+                                        prefix.as_str(),
+                                        super::reader::zip_join(dir.as_str(), ele.href.as_str())
+                                            .as_str(),
                                     );
                                     if let Ok(vs) = reader.read_file(l.as_str()) {
                                         ele.data = vs;
@@ -265,9 +297,8 @@ impl EpubHtml {
                         }
                         break;
                     }
-                    Err(IError::FileNotFound) => {}
                     Err(_e) => {
-                        break;
+                        // 一个前缀读不出来不能中断整张重试表
                     }
                 }
             }
@@ -288,11 +319,13 @@ impl EpubHtml {
         } else {
             (None, self.file_name().to_string())
         };
+        // 当前文件所在目录（带尾 `/`），用于拼接链接资源的相对引用
+        let dir = origin[..origin.rfind('/').map(|f| f + 1).unwrap_or(0)].to_string();
         let mut f = String::from(self._file_name.as_str());
         if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
-            for prefix in EpubHtml::PREFIXES.iter() {
+            for prefix in prefix_candidates(self.prefix.as_str()) {
                 // 添加 前缀再次读取
-                f = format!("{prefix}{origin}");
+                f = super::reader::zip_join(prefix.as_str(), origin.as_str());
                 let s = self.reader.as_mut().unwrap();
                 let mut r = s.lock().unwrap();
                 let d = r.read_string(f.as_str());
@@ -308,8 +341,8 @@ impl EpubHtml {
                             body_attribute,
                         }) = get_html_info(v.as_str(), id)
                         {
-                            if !title.is_empty() {
-                                // self.set_title(&title);
+                            if !title.is_empty() && self.title.is_empty() {
+                                // 已有标题（来自目录或调用方）不再被文档自身的 <title> 覆盖
                                 self.title = title;
                             }
                             self._data = Some(content);
@@ -330,12 +363,10 @@ impl EpubHtml {
                                     // }
                                 } else {
                                     // 本地的
-                                    let l = format!(
-                                        "{prefix}{}",
-                                        crate::path::Path::system(self._file_name.as_str())
-                                            .pop()
-                                            .join(ele.href.as_str())
-                                            .to_str()
+                                    let l = super::reader::zip_join(
+                                        prefix.as_str(),
+                                        super::reader::zip_join(dir.as_str(), ele.href.as_str())
+                                            .as_str(),
                                     );
                                     if let Ok(vs) = r.read_file(l.as_str()) {
                                         ele.data = vs;
@@ -351,9 +382,8 @@ impl EpubHtml {
                         }
                         break;
                     }
-                    Err(IError::FileNotFound) => {}
                     Err(_e) => {
-                        break;
+                        // 一个前缀读不出来不能中断整张重试表
                     }
                 }
             }
@@ -384,13 +414,14 @@ impl EpubHtml {
         };
         let mut f = String::from(self._file_name.as_str());
         if self.raw_data.is_none() && self.reader.is_some() && !f.is_empty() {
-            for prefix in EpubHtml::PREFIXES.iter() {
+            for prefix in prefix_candidates(self.prefix.as_str()) {
                 // 添加 前缀再次读取
-                f = format!("{prefix}{origin}");
+                f = super::reader::zip_join(prefix.as_str(), origin.as_str());
                 if let Some(mut s) = self.reader.as_mut().and_then(|m| m.lock().ok()) {
                     let d = s.read_string(f.as_str());
                     if let Ok(data) = d {
                         self.raw_data = Some(data);
+                        break;
                     }
                 }
             }
@@ -483,10 +514,25 @@ epub_base_field! {
 #[derive(Default,Clone)]
 pub struct EpubAssets {
    pub(crate) version:String,
+   /// item@properties，例如 `nav`、`cover-image`
+   pub(crate) properties: String,
+   /// item@fallback，指向另一个 item 的 id
+   pub(crate) fallback: String,
 }
 }
 
 impl EpubAssets {
+    ///
+    /// `item@fallback` 指向的 manifest item id
+    ///
+    pub fn fallback(&self) -> &str {
+        self.fallback.as_str()
+    }
+
+    pub fn set_fallback<T: Into<String>>(&mut self, id: T) {
+        self.fallback = id.into();
+    }
+
     pub fn with_version<T: Into<String>>(&mut self, version: T) {
         self.version = version.into();
     }
@@ -497,17 +543,11 @@ impl EpubAssets {
 
     pub fn data_mut(&mut self) -> Option<&[u8]> {
         let mut f = String::from(self._file_name.as_str());
-        if self._data.is_none()
-            && self.reader.is_some()
-            && !f.is_empty()
-            && self._data.is_none()
-            && self.reader.is_some()
-            && !f.is_empty()
-        {
-            for prefix in EpubHtml::PREFIXES.iter() {
+        if self._data.is_none() && self.reader.is_some() && !f.is_empty() {
+            for prefix in prefix_candidates(self.prefix.as_str()) {
                 let s = self.reader.as_mut().unwrap();
                 // 添加 前缀再次读取
-                f = format!("{prefix}{}", self._file_name);
+                f = super::reader::zip_join(prefix.as_str(), self._file_name.as_str());
                 let d = s.lock().unwrap().read_file(f.as_str());
                 if let Ok(v) = d {
                     self.set_data(v);
@@ -515,7 +555,7 @@ impl EpubAssets {
                 }
                 // 有的文件名被url编码了，所以这里加一个解码后的读取
                 if let Ok(fname) = urldecode_enhanced(self._file_name.as_str()) {
-                    f = format!("{prefix}{}", fname);
+                    f = super::reader::zip_join(prefix.as_str(), fname.as_str());
                     let d = s.lock().unwrap().read_file(f.as_str());
                     if let Ok(v) = d {
                         self.set_data(v);
@@ -538,9 +578,9 @@ impl EpubAssets {
     pub fn save_to<T: AsRef<str>>(&mut self, file_path: T) -> IResult<()> {
         let mut f: String = self._file_name.clone();
         if self.reader.is_some() && !f.is_empty() {
-            for prefix in EpubHtml::PREFIXES.iter() {
+            for prefix in prefix_candidates(self.prefix.as_str()) {
                 if let Some(mut s) = self.reader.as_mut().and_then(|m| m.lock().ok()) {
-                    f = format!("{prefix}{}", self._file_name);
+                    f = super::reader::zip_join(prefix.as_str(), self._file_name.as_str());
                     let d: Result<(), IError> = s.read_to_path(f.as_str(), file_path.as_ref());
                     if d.is_ok() {
                         break;
@@ -594,6 +634,8 @@ pub struct EpubNav {
     /// 如果需要序号需要调用方自行处理
     title: String,
     child: Vec<EpubNav>,
+    /// 目录项所属 nav 块的 `epub:type`，例如 `toc`
+    pub(crate) properties: String,
 }
 }
 impl Debug for EpubNav {
@@ -615,10 +657,12 @@ impl Clone for EpubNav {
             id: self.id.clone(),
             _file_name: self._file_name.clone(),
             media_type: self.media_type.clone(),
+            prefix: self.prefix.clone(),
             _data: self._data.clone(),
             reader: None,
             title: self.title.clone(),
             child: self.child.clone(),
+            properties: self.properties.clone(),
         }
     }
 }
@@ -790,6 +834,20 @@ impl EpubBook {
         self.direction = Some(dir);
     }
 
+    ///
+    /// 书本的阅读方向，来自 `spine@page-progression-direction`
+    ///
+    pub fn direction(&self) -> Option<&Direction> {
+        self.direction.as_ref()
+    }
+
+    ///
+    /// 包文档（OPF）在压缩包内的目录前缀，带尾 `/`，例如 `EPUB/`
+    ///
+    pub fn prefix(&self) -> &str {
+        self.prefix.as_str()
+    }
+
     pub fn with_direction(mut self, dir: Direction) -> Self {
         self.set_direction(dir);
         self
@@ -873,6 +931,9 @@ impl EpubBook {
         if let Some(r) = &self.reader {
             assets.reader = Some(Arc::clone(r));
         }
+        if assets.prefix.is_empty() {
+            assets.prefix = self.prefix.clone();
+        }
         self.assets.push(assets);
     }
 
@@ -914,12 +975,18 @@ impl EpubBook {
         if let Some(r) = &self.reader {
             chap.reader = Some(Arc::clone(r));
         }
+        if chap.prefix.is_empty() {
+            chap.prefix = self.prefix.clone();
+        }
         self.chapters.push(chap);
     }
 
     pub fn insert_chapter(&mut self, index: usize, mut chap: EpubHtml) {
         if let Some(r) = &self.reader {
             chap.reader = Some(Arc::clone(r));
+        }
+        if chap.prefix.is_empty() {
+            chap.prefix = self.prefix.clone();
         }
         self.chapters.insert(index, chap);
     }
@@ -976,6 +1043,9 @@ impl EpubBook {
         if let Some(r) = &self.reader {
             cover.reader = Some(Arc::clone(r));
         }
+        if cover.prefix.is_empty() {
+            cover.prefix = self.prefix.clone();
+        }
         self.cover = Some(cover);
     }
 
@@ -995,41 +1065,65 @@ impl EpubBook {
     pub(crate) fn update_chapter(&mut self) {
         let f = flatten_nav(&self.nav);
 
-        let mut map = HashMap::new();
+        let mut map: HashMap<usize, Vec<&EpubNav>> = HashMap::new();
+        let mut done: Vec<String> = Vec::new();
         for (index, ele) in self.chapters.iter_mut().enumerate() {
-            if let Some(v) = self.nav.iter().find(|f| f.file_name() == ele.file_name()) {
-                ele.set_title(v.title());
+            if let Some(v) = self.nav.iter().find(|n| n.file_name() == ele.file_name()) {
+                // nav 里的标题为空串时，不能把章节自己已有的标题清掉
+                if !v.title().is_empty() {
+                    ele.set_title(v.title());
+                }
             } else {
                 // 如果 chapter 在 nav中不存在，有两种情况，一是cover之类的本身就不存在，二是epub3，在一个文件里使用id分章节
-                let id_nav: Vec<&&EpubNav> = f
+                let id_nav: Vec<&EpubNav> = f
                     .iter()
-                    .filter(|f| {
-                        f.file_name().contains("#") && f.file_name().starts_with(ele.file_name())
+                    .filter(|n| {
+                        n.file_name().contains("#") && n.file_name().starts_with(ele.file_name())
                     })
+                    .copied()
                     .collect();
                 if !id_nav.is_empty() {
+                    // 同一个文件在 spine 里出现多次时，只按第一个拆片，避免章节翻倍
+                    if done.iter().any(|n| n == ele.file_name()) {
+                        continue;
+                    }
+                    done.push(ele.file_name().to_string());
                     // epub3,去除该 chap,重新填入
                     map.insert(index, id_nav);
                 }
             }
         }
-        // 修正章节
-        let mut offset = 0;
-        for (index, nav) in map {
-            for ele in nav {
-                let mut chap = EpubHtml::default()
-                    .with_title(ele.title())
-                    .with_file_name(ele.file_name());
-                if let Some(r) = &self.reader {
-                    chap.reader = Some(Arc::clone(r));
+        // 修正章节：整篇章节由它的分片章节替换，同一文件不会同时出现整篇与分片两种表述
+        let old = std::mem::take(&mut self.chapters);
+        let mut out: Vec<EpubHtml> = Vec::with_capacity(old.len());
+        for (index, chap) in old.into_iter().enumerate() {
+            match map.get(&index) {
+                Some(nav) => {
+                    for ele in nav {
+                        let mut c = EpubHtml::default().with_file_name(ele.file_name());
+                        if !ele.title().is_empty() {
+                            c.set_title(ele.title());
+                        } else {
+                            // 目录标题为空时沿用整篇章节的标题，避免出现无名章节
+                            c.set_title(chap.title());
+                        }
+                        c.prefix = chap.prefix.clone();
+                        if let Some(r) = &self.reader {
+                            c.reader = Some(Arc::clone(r));
+                        }
+                        out.push(c);
+                    }
                 }
-                self.chapters.insert(index + offset, chap);
-                offset += 1;
+                None => out.push(chap),
             }
         }
+        self.chapters = out;
         if let Some(cover) = &mut self.cover_chapter {
             if let Some(r) = &self.reader {
                 cover.reader = Some(Arc::clone(r));
+            }
+            if cover.prefix.is_empty() {
+                cover.prefix = self.prefix.clone();
             }
         }
     }
@@ -1069,6 +1163,24 @@ impl EpubBook {
         // Return the `User`.
         Ok(u)
     }
+}
+
+///
+/// 取数时尝试的目录前缀
+///
+/// 首选包文档所在目录（zip 内真正的出处），其后保留历史的前缀重试表作为兜底
+///
+pub(crate) fn prefix_candidates(prefix: &str) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    if !prefix.is_empty() {
+        v.push(prefix.to_string());
+    }
+    for ele in EpubHtml::PREFIXES.iter() {
+        if !v.iter().any(|f| f == ele) {
+            v.push(ele.to_string());
+        }
+    }
+    v
 }
 
 /// 获取最低层级的目录

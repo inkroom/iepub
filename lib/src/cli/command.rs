@@ -487,7 +487,8 @@ pub(crate) mod epub {
                 }
 
                 for path in args {
-                    if out_file(global_opts, opts, path.as_str()) {
+                    // out_file 返回 true 表示"可以写"（文件不存在、带 -y、或用户确认覆盖）
+                    if !out_file(global_opts, opts, path.as_str()) {
                         continue;
                     }
                     msg!("writing cover to {}", path);
@@ -1017,7 +1018,7 @@ pub(crate) mod epub {
                     need_replace.iter().map(|f| f.0.to_string()).collect();
 
                 for ele in book.chapters_mut() {
-                    let current = iepub::path::Path::system(ele.file_name()).pop();
+                    let current = iepub::path::Path::zip(ele.file_name()).pop();
                     let file_name = ele.file_name().to_string();
                     if let Some(data) = ele.data_mut() {
                         let v = |v| {
@@ -1072,7 +1073,7 @@ pub(crate) mod epub {
                         .data_mut()
                         .and_then(|f| String::from_utf8(f.to_vec()).ok())
                     {
-                        let current = iepub::path::Path::system(ele.file_name()).pop();
+                        let current = iepub::path::Path::zip(ele.file_name()).pop();
 
                         let url = iepub::internal::get_css_content_url(data.as_str());
                         let mut n_data = data.clone();

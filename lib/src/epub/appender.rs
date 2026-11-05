@@ -47,7 +47,7 @@ pub fn write_metadata<P: AsRef<Path> + ?Sized>(file: &P, book: &mut EpubBook) ->
                 .compression_method(zip::CompressionMethod::Stored)
                 .unix_permissions(0o755);
             let mut f = reader.by_index(i)?;
-            writer.inner.start_file(f.name(), options)?;
+            writer.inner.start_file(f.name()?, options)?;
             std::io::copy(&mut f, &mut writer.inner)?;
         }
     }

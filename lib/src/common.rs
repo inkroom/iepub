@@ -290,10 +290,8 @@ pub(crate) fn unescape_html(v: &str) -> String {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(quick_xml::events::Event::Text(e)) => {
-                // let _= txt_buf(&e);
-                if let Ok(t) = e.decode() {
-                    txt.push_str(t.deref());
-                }
+                let t = e.into_inner();
+                txt.push_str(t.as_ref());
             }
             Ok(quick_xml::events::Event::Eof) => {
                 break;

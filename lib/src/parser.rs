@@ -36,7 +36,7 @@ impl HtmlParser {
                 Ok(Event::Eof) => break,
 
                 Ok(Event::Start(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     depth += 1;
 
                     // 检查是否进入 body 标签
@@ -72,7 +72,7 @@ impl HtmlParser {
 
                     // 提取属性
                     for attr in e.attributes().flatten() {
-                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let key = attr.key.as_ref().to_string();
                         let value = attr
                             .normalized_value(XmlVersion::Implicit1_0)
                             .unwrap_or(std::borrow::Cow::Borrowed(""))
@@ -84,7 +84,7 @@ impl HtmlParser {
                 }
 
                 Ok(Event::End(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     depth = depth.saturating_sub(1);
 
                     // 检查是否离开 body 标签
@@ -111,7 +111,7 @@ impl HtmlParser {
                 Ok(Event::Text(ref e)) => {
                     if in_body {
                         // 手动解码文本
-                        let decoded = String::from_utf8_lossy(e.as_ref()).to_string();
+                        let decoded = e.clone().into_inner().to_string();
                         if !decoded.trim().is_empty() {
                             if let Some(item) = stack.last_mut() {
                                 item.add_text(&decoded);
@@ -131,13 +131,13 @@ impl HtmlParser {
                         continue;
                     }
 
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     let content_type = Self::tag_to_content_type(&tag_name);
                     let mut item = ContentItem::new(content_type);
 
                     // 提取属性 (对 img, br, hr 等自闭合标签很重要)
                     for attr in e.attributes().flatten() {
-                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let key = attr.key.as_ref().to_string();
                         let value = attr
                             .normalized_value(XmlVersion::Implicit1_0)
                             .unwrap_or(std::borrow::Cow::Borrowed(""))
@@ -154,7 +154,7 @@ impl HtmlParser {
 
                 Ok(Event::CData(ref e)) => {
                     if in_body {
-                        let text = String::from_utf8_lossy(e.as_ref());
+                        let text = e.clone().into_inner().to_string();
                         if let Some(item) = stack.last_mut() {
                             item.add_text(&text);
                         }

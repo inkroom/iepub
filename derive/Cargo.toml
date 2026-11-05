@@ -9,4 +9,3 @@ description = { workspace = true }
 proc-macro = true
 
 [dependencies]
-

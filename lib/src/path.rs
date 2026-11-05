@@ -11,15 +11,13 @@ pub struct Path {
 
 impl Path {
     /// 基于操作系统解析路径
+    ///
+    /// 输出时的分隔符跟随操作系统，切分时 `/` 与 `\` 都接受
     pub fn system<T: AsRef<str>>(path: T) -> Self {
         #[cfg(target_os = "windows")]
         let sep = "\\";
         #[cfg(not(target_os = "windows"))]
         let sep = "/";
-        // let v = path.split(sep);
-        // for ele in v {
-        //     paths.push(ele.to_string());
-        // }
 
         Self {
             paths: Vec::new(),
@@ -28,10 +26,21 @@ impl Path {
         .join(path)
     }
 
+    /// 解析电子书内部的路径
+    ///
+    /// epub/mobi 包内的条目名分隔符恒为 `/`，不能用操作系统的分隔符去切分和拼接
+    pub fn zip<T: AsRef<str>>(path: T) -> Self {
+        Self {
+            paths: Vec::new(),
+            sep: "/".to_string(),
+        }
+        .join(path)
+    }
+
     pub fn join<T: AsRef<str>>(&self, path: T) -> Self {
         let mut s = self.clone();
 
-        let v = path.as_ref().split(s.sep.as_str());
+        let v = path.as_ref().split(['/', '\\']);
         for ele in v {
             if ele == ".." {
                 s.paths.pop();
@@ -48,13 +57,9 @@ impl Path {
 
     /// 当前目录有多少级
     pub fn level_count(&self) -> usize {
-        #[cfg(target_os = "windows")]
-        let sep = "\\";
-        #[cfg(not(target_os = "windows"))]
-        let sep = "/";
         self.paths
             .iter()
-            .filter(|f| !f.trim().is_empty() && f.as_str() != sep)
+            .filter(|f| !f.trim().is_empty())
             .count()
     }
 
@@ -95,13 +100,14 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut path = Path::system("/ok");
+        // 电子书内部的路径分隔符恒为 `/`，与操作系统无关
+        let mut path = Path::zip("/ok");
         path = path.join("1");
 
         assert_eq!("/ok/1", path.to_str());
         assert_eq!(2, path.level_count());
 
-        let mut path = Path::system("/ok");
+        let mut path = Path::zip("/ok");
         assert_eq!(1, path.level_count());
 
         path = path.join("../1");
@@ -109,7 +115,7 @@ mod tests {
         assert_eq!(1, path.level_count());
         assert_eq!("/1", path.to_str());
 
-        let mut path = Path::system("res");
+        let mut path = Path::zip("res");
         path = path.join("../1");
 
         assert_eq!("1", path.to_str());
@@ -117,12 +123,12 @@ mod tests {
 
     #[test]
     fn test_releative_path() {
-        assert_eq!("../../4/5.png", Path::system("1/2").releative("4/5.png"));
-        assert_eq!("../../4/5.png", Path::system("4/2").releative("4/5.png"));
+        assert_eq!("../../4/5.png", Path::zip("1/2").releative("4/5.png"));
+        assert_eq!("../../4/5.png", Path::zip("4/2").releative("4/5.png"));
         assert_eq!(
             "../../4/5/6.png",
-            Path::system("4/2").releative("4/5/6.png")
+            Path::zip("4/2").releative("4/5/6.png")
         );
-        assert_eq!("../4/5/6.png", Path::system("2").releative("4/5/6.png"));
+        assert_eq!("../4/5/6.png", Path::zip("2").releative("4/5/6.png"));
     }
 }

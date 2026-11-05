@@ -47,8 +47,7 @@ pub(crate) fn read_image_recindex_from_html(html: &[u8]) -> IResult<Vec<usize>> 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec())
-                    .map_err(|_| IError::InvalidArchive(Cow::from("not a img")))?;
+                let name = e.name().as_ref().to_string();
 
                 if name == "img" {
                     let recindex = e.get_recindex();
@@ -259,7 +258,7 @@ trait AttrExt {
 
 impl<'a> AttrExt for quick_xml::events::BytesStart<'a> {
     fn get_recindex(&self) -> Option<usize> {
-        let attr = self.attributes_raw();
+        let attr = self.attributes_raw().as_bytes();
         let mut index = 0;
         let key = b"recindex=";
 

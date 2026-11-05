@@ -36,9 +36,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>, id: &mut AtomicUsize) -> IResult<Vec<Mo
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a tagx")
-                })?;
+                let name = e.name().as_ref().to_string();
 
                 if name == "a" {
                     // 这里的上一级应该只有 p, 上一级是 blockquote 的情况 在text的时候交给其他方法处理了
@@ -61,9 +59,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>, id: &mut AtomicUsize) -> IResult<Vec<Mo
                 parent.push(name);
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a tagx")
-                })?;
+                let name = e.name().as_ref().to_string();
                 parent.pop();
                 if name == "a" && now.is_some() {
                     // 如果a标签内容为空或者只有空白， text不会被触发，只有end
@@ -95,10 +91,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>, id: &mut AtomicUsize) -> IResult<Vec<Mo
                         // 新的一卷
 
                         if now.is_some() {
-                            now.as_mut().unwrap().title = match e.decode() {
-                                Ok(v) => v.deref().to_string(),
-                                Err(e) => return Err(crate::common::IError::Encoding(e)),
-                            };
+                            now.as_mut().unwrap().title = e.into_inner().to_string();
 
                             // 读取这一卷下的目录
                             let has_more = read_blockquote(&mut reader, now.as_mut().unwrap(), id)?;
@@ -115,10 +108,7 @@ pub(crate) fn read_nav_xml(xml: Vec<u8>, id: &mut AtomicUsize) -> IResult<Vec<Mo
                     } else if ppa == "blockquote" {
                         // 一级目录
                         if now.is_some() {
-                            now.as_mut().unwrap().title = match e.decode() {
-                                Ok(v) => v.deref().to_string(),
-                                Err(e) => return Err(crate::common::IError::Encoding(e)),
-                            };
+                            now.as_mut().unwrap().title = e.into_inner().to_string();
                             nav.push(now.unwrap());
                             now = None;
 
@@ -304,7 +294,7 @@ fn read_blockquote(
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec())?;
+                let name = e.name().as_ref().to_string();
 
                 if name == "a" {
                     now = Some(MobiNav::default(id.fetch_add(1, Ordering::SeqCst)));
@@ -320,14 +310,11 @@ fn read_blockquote(
             }
             Ok(Event::Text(e)) => {
                 if let Some(n) = &mut now {
-                    n.title = match e.decode() {
-                        Ok(v) => v.deref().to_string(),
-                        Err(_) => return Err(IError::InvalidArchive(Cow::from("xml error"))),
-                    };
+                    n.title = e.into_inner().to_string();
                 }
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec())?;
+                let name = e.name().as_ref().to_string();
                 if name == "a" {
                     if let Some(n) = now {
                         parent.children.push(n);
@@ -361,7 +348,7 @@ pub(crate) fn read_guide_filepos(html: &[u8]) -> IResult<Option<usize>> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec())?;
+                let name = e.name().as_ref().to_string();
                 if name == "reference"
                     && parent.last_mut().unwrap_or(&mut "".to_string()) == "guide"
                     && parent.rget(1).unwrap_or(&mut "".to_string()) == "head"
@@ -376,7 +363,7 @@ pub(crate) fn read_guide_filepos(html: &[u8]) -> IResult<Option<usize>> {
                 parent.push(name);
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec())?;
+                let name = e.name().as_ref().to_string();
 
                 if name == "head" || name == "body" {
                     return Ok(None);
@@ -402,7 +389,7 @@ trait FilePosAttr {
 
 impl<'a> FilePosAttr for BytesStart<'a> {
     fn get_file_pos(&self) -> Option<usize> {
-        let attr = self.attributes_raw();
+        let attr = self.attributes_raw().as_bytes();
         let mut index = 0;
         let key = b"filepos=";
 

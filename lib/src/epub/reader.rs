@@ -31,6 +31,39 @@ macro_rules! read_from_zip {
     }};
 }
 
+/// 取限定名的本地部分（`opf:item` -> `item`、`ncx:navMap` -> `navMap`）
+///
+/// 生成器对 OPF / NCX / nav 使用的命名空间前缀并不固定，比较标签名时必须先去前缀，
+/// 否则带前缀的包文档会一个分支都进不去（jlreq 整本解析为空）。
+#[inline]
+pub(crate) fn bare_name(name: &str) -> &str {
+    name.rsplit(':').next().unwrap_or(name)
+}
+
+/// 按 `/` 与 `\` 同时切分，用于解析 zip 内部（EPUB 内）的路径
+#[inline]
+fn zip_split(path: &str) -> impl Iterator<Item = &str> {
+    path.split(['/', '\\'])
+}
+
+/// 把 `base` 目录（以 `/` 结尾，可为空）与相对引用拼成 zip 内的条目名，并归一化 `.` 与 `..`
+///
+/// EPUB 里的 href 允许出现 `../images/1.jpg` 这类回退写法，直接字符串拼接得到的结果
+/// 与 zip 条目名对不上，目录与章节就匹配不到。
+pub(crate) fn zip_join(base: &str, href: &str) -> String {
+    let mut levels: Vec<&str> = Vec::new();
+    for ele in zip_split(base).chain(zip_split(href)) {
+        match ele {
+            "" | "." => {}
+            ".." => {
+                levels.pop();
+            }
+            _ => levels.push(ele),
+        }
+    }
+    levels.join("/")
+}
+
 fn get_opf_location(xml: &str) -> IResult<String> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
@@ -47,8 +80,8 @@ fn get_opf_location(xml: &str) -> IResult<String> {
             Err(e) => {
                 return Err(IError::Xml(e));
             }
-            Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"rootfile" {
+            Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
+                if bare_name(e.name().as_ref()) == "rootfile" {
                     if let Ok(path) = e.try_get_attribute("full-path") {
                         return match path.map(|f| {
                             f.normalized_value(XmlVersion::Implicit1_0)
@@ -70,10 +103,7 @@ fn create_meta(xml: &BytesStart) -> IResult<EpubMetaData> {
     let mut meta = EpubMetaData::default();
 
     for a in xml.attributes().flatten() {
-        meta.push_attr(
-            String::from_utf8(a.key.0.to_vec()).unwrap().as_str(),
-            String::from_utf8(a.value.to_vec()).unwrap().as_str(),
-        );
+        meta.push_attr(a.key.0, a.value.as_ref());
     }
     Ok(meta)
 }
@@ -105,7 +135,8 @@ fn read_meta_xml(
                 return invalid!("err");
             }
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(IError::Utf8)?;
+                let name =
+                    bare_name(e.name().as_ref()).to_string();
 
                 if name == "meta" {
                     if parent.len() != 2 || parent[1] != "metadata" {
@@ -117,15 +148,15 @@ fn read_meta_xml(
                         }
                         parent.push("meta".to_string());
                     }
-                } else if name == "dc:date" {
-                    if let Some(event) =
-                        e.try_get_attribute("opf:event")
-                            .ok()
-                            .and_then(|f| f)
-                            .map(|f| {
-                                f.normalized_value(XmlVersion::Implicit1_0)
-                                    .map_or_else(|_| String::new(), |v| v.to_string())
-                            })
+                } else if name == "date" {
+                    if let Some(event) = e
+                        .attributes()
+                        .flatten()
+                        .find(|f| bare_name(f.key.as_ref()) == "event")
+                        .map(|f| {
+                            f.normalized_value(XmlVersion::Implicit1_0)
+                                .map_or_else(|_| String::new(), |v| v.to_string())
+                        })
                     {
                         date_buf.push((Some(event), None));
                     } else {
@@ -138,7 +169,7 @@ fn read_meta_xml(
                 }
             }
             Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"meta" {
+                if bare_name(e.name().as_ref()) == "meta" {
                     if parent.len() != 2 || parent[1] != "metadata" {
                         return invalid!("not valid opf meta empty");
                     } else {
@@ -151,7 +182,7 @@ fn read_meta_xml(
             }
             Ok(Event::GeneralRef(e)) => {
                 if reading_text {
-                    let t = e.decode().map_err(IError::Encoding)?;
+                    let t = e.into_inner();
                     if t == "amp" {
                         text.push('&');
                     } else if t == "lt" {
@@ -168,11 +199,12 @@ fn read_meta_xml(
             Ok(Event::Text(txt)) => {
                 if !parent.is_empty() {
                     reading_text = true;
-                    text.push_str(txt.decode().map_err(IError::Encoding)?.deref());
+                    text.push_str(txt.into_inner().as_ref());
                 }
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(IError::Utf8)?;
+                let name =
+                    bare_name(e.name().as_ref()).to_string();
                 reading_text = false;
 
                 match name.as_str() {
@@ -181,31 +213,31 @@ fn read_meta_xml(
                             m.set_text(text.trim());
                         }
                     }
-                    "dc:identifier" => {
+                    "identifier" => {
                         book.set_identifier(text.trim());
                     }
-                    "dc:title" => {
+                    "title" => {
                         book.set_title(text.trim());
                     }
-                    "dc:creator" => {
+                    "creator" => {
                         book.set_creator(text.trim());
                     }
-                    "dc:description" => {
+                    "description" => {
                         book.set_description(text.trim());
                     }
-                    "dc:format" => {
+                    "format" => {
                         book.set_format(text.trim());
                     }
-                    "dc:publisher" => {
+                    "publisher" => {
                         book.set_publisher(text.trim());
                     }
-                    "dc:subject" => {
+                    "subject" => {
                         book.set_subject(text.trim());
                     }
-                    "dc:contributor" => {
+                    "contributor" => {
                         book.set_contributor(text.trim());
                     }
-                    "dc:date" => {
+                    "date" => {
                         if let Some(last_mut) = date_buf.last_mut() {
                             last_mut.1 = Some(text.trim().to_string());
                         }
@@ -257,144 +289,185 @@ fn read_guide_xml(
     book: &mut EpubBook,
 ) -> IResult<()> {
     use quick_xml::events::Event;
-    // 模拟 栈，记录当前的层级
-    let _parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                if e.name().as_ref() == b"reference" {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                if bare_name(e.name().as_ref()) == "reference" {
                     // <reference href="cover.xhtml" title="cover" type="cover"/>
                     // 读取封面页的时候，不一定已经获取到了章节
-                    if let Some(_t) = e
-                        .try_get_attribute("type")
-                        .ok()
-                        .and_then(|f| f)
+                    if e
+                        .attributes()
+                        .flatten()
+                        .find(|f| bare_name(f.key.as_ref()) == "type")
                         .map(|f| {
                             f.normalized_value(XmlVersion::Implicit1_0)
                                 .map_or_else(|_| String::new(), |v| v.to_string())
                         })
                         .filter(|f| f == "cover")
+                        .is_some()
                     {
-                        if let Some(href) =
-                            e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
+                        if let Some(href) = e
+                            .attributes()
+                            .flatten()
+                            .find(|f| bare_name(f.key.as_ref()) == "href")
+                            .map(|f| {
                                 f.normalized_value(XmlVersion::Implicit1_0)
                                     .map_or_else(|_| String::new(), |v| v.to_string())
                             })
                         {
                             book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
                         }
-                        break;
-                    }
-                }
-            }
-            Ok(Event::Empty(e)) => {
-                match e.name().as_ref() {
-                    b"reference" => {
-                        // <reference href="cover.xhtml" title="cover" type="cover"/>
-                        // 读取封面页的时候，不一定已经获取到了章节
-
-                        if let Some(_t) = e
-                            .try_get_attribute("type")
-                            .ok()
-                            .and_then(|f| f)
-                            .map(|f| {
-                                f.normalized_value(XmlVersion::Implicit1_0)
-                                    .map_or_else(|_| String::new(), |v| v.to_string())
-                            })
-                            .filter(|f| f == "cover")
-                        {
-                            if let Some(href) =
-                                e.try_get_attribute("href").ok().and_then(|f| f).map(|f| {
-                                    f.normalized_value(XmlVersion::Implicit1_0)
-                                        .map_or_else(|_| String::new(), |v| v.to_string())
-                                })
-                            {
-                                book.cover_chapter = Some(EpubHtml::default().with_file_name(href));
-                            }
-                            break;
-                        }
-                    }
-                    _ => {
-                        // invalid!("item err")
                     }
                 }
             }
             Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"guide" {
+                if bare_name(e.name().as_ref()) == "guide" {
                     break;
                 }
             }
-
             Ok(Event::Eof) => {
                 break;
             }
             Err(_e) => {
                 return invalid!("err");
             }
-            _ => {
-                break;
-            }
+            // 注释、文本等不能终止解析
+            _ => {}
         }
+        buf.clear();
     }
     Ok(())
 }
 
+/// 判断 manifest 项是不是目录文档
+///
+/// 目录文档不参与成章，也不作为普通章节资源暴露
+#[inline]
+fn is_toc_item(item: &EpubAssets, spine_toc: &Option<String>) -> bool {
+    item.has_property("nav")
+        || item.media_type == "application/x-dtbncx+xml"
+        || spine_toc.as_deref().map(|f| f == item.id()).unwrap_or(false)
+        || item.id() == "toc"
+        || item.id() == "ncx"
+}
+
+/// 判断 manifest 项能不能当成正文章节
+///
+/// xhtml/html 之外，`image/svg+xml` 在 EPUB3 里也是合法的文档项（固定版式书页），
+/// 只有真正的二进制资源（图片、字体、css）才不该成为章节
+#[inline]
+fn is_html_item(item: &EpubAssets) -> bool {
+    item.media_type.contains("html")
+        || item.media_type == "image/svg+xml"
+        || item.file_name().ends_with(".xhtml")
+        || item.file_name().ends_with(".html")
+        || item.file_name().ends_with(".svg")
+}
+
+///
+/// spine：章节顺序、`spine@page-progression-direction`、`spine@toc`
+///
+/// 非线性项（`itemref@linear="no"`）、目录文档本身、以及图片/SVG 这类非 html 项都不会成为章节；
+/// 非 html 项声明了 `item@fallback` 时，改用 fallback 指向的文档成章，图片本体继续留在资源里。
+/// 以上修正只作用于 EPUB3，EPUB2 完全沿用原有行为，避免影响既有解析结果。
+///
 fn read_spine_xml(
     reader: &mut quick_xml::reader::Reader<&[u8]>,
     book: &mut EpubBook,
     assets: &mut Vec<EpubAssets>,
+    spine_toc: &Option<String>,
 ) -> IResult<()> {
     use quick_xml::events::Event;
 
-    // 模拟 栈，记录当前的层级
-    let _parent: Vec<String> = vec!["package".to_string(), "metadata".to_string()];
+    // metadata 先于 spine 解析，此时 version 已经拿到
+    let epub3 = book.version().starts_with('3');
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"spine" {
-                    // 写入书本
-                    for ele in assets.iter() {
-                        if ele.id() == "toc" && !ele.file_name().contains(".xhtml") {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                let tag = bare_name(e.name().as_ref()).to_string();
+                if tag == "itemref" {
+                    let mut idref = String::new();
+                    let mut linear = String::new();
+                    let mut properties = String::new();
+                    for attr in e.attributes().flatten() {
+                        let key = bare_name(attr.key.as_ref()).to_string();
+                        let value = attr
+                            .normalized_value(XmlVersion::Implicit1_0)
+                            .map_or_else(|_| String::new(), |f| f.to_string());
+                        if key == "idref" {
+                            idref = value;
+                        } else if key == "linear" {
+                            linear = value;
+                        } else if key == "properties" {
+                            properties = value;
+                        }
+                    }
+                    if idref.is_empty() {
+                        continue;
+                    }
+                    let index = match assets.iter().position(|s| s.id() == idref.as_str()) {
+                        Some(i) => i,
+                        None => continue,
+                    };
+                    if !epub3 {
+                        // EPUB2：沿用既有行为，spine 引用什么就成章
+                        let mut chap =
+                            EpubHtml::default().with_file_name(assets[index].file_name());
+                        chap.set_properties(properties);
+                        book.add_chapter(chap);
+                        if !assets[index].id().eq_ignore_ascii_case("toc")
+                            && assets[index].file_name().contains(".xhtml")
+                        {
+                            assets.remove(index);
+                        }
+                        continue;
+                    }
+                    // EPUB3：目录文档本身、非线性项不参与成章
+                    if linear == "no" || is_toc_item(&assets[index], spine_toc) {
+                        continue;
+                    }
+                    // 非 html 的 spine 项（漫画、SVG）需要回落到 fallback 文档
+                    let mut target = assets[index].file_name().to_string();
+                    if !is_html_item(&assets[index]) {
+                        let fallback = assets[index].fallback.clone();
+                        if fallback.is_empty() {
                             continue;
                         }
-                        book.add_assets(ele.clone());
+                        match assets.iter().find(|s| s.id() == fallback.as_str()) {
+                            Some(fb) => target = fb.file_name().to_string(),
+                            None => continue,
+                        }
                     }
+                    // 同一文件被多次引用时只保留一章
+                    if book.get_chapter(target.as_str()).is_some() {
+                        continue;
+                    }
+                    let mut chap = EpubHtml::default().with_file_name(target.as_str());
+                    chap.set_properties(properties);
+                    book.add_chapter(chap);
+                    // 成章的文件从资源表里摘除；靠 fallback 成章时，本体（图片）仍留在资源里
+                    if assets[index].file_name() == target.as_str() {
+                        assets.remove(index);
+                    }
+                }
+            }
+            Ok(Event::End(e)) => {
+                if bare_name(e.name().as_ref()) == "spine" {
                     break;
                 }
             }
-
-            Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"itemref" {
-                    if let Ok(href) = e.try_get_attribute("idref") {
-                        if let Some(h) = href.map(|f| {
-                            f.normalized_value(XmlVersion::Implicit1_0)
-                                .map_or_else(|_| String::new(), |v| v.to_string())
-                        }) {
-                            let xhtml = assets
-                                .iter()
-                                .enumerate()
-                                .find(|(_index, s)| s.id() == h.as_str());
-                            if let Some((index, xh)) = xhtml {
-                                book.add_chapter(
-                                    EpubHtml::default().with_file_name(xh.file_name()),
-                                );
-                                if !xh.id().eq_ignore_ascii_case("toc")
-                                    && xh.file_name().contains(".xhtml")
-                                {
-                                    assets.remove(index);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            _ => {
+            Ok(Event::Eof) => {
                 break;
             }
+            Err(_e) => {
+                return invalid!("err");
+            }
+            // spine 里的注释、文本等不能终止整段解析
+            _ => {}
         }
+        buf.clear();
     }
 
     Ok(())
@@ -413,24 +486,27 @@ fn read_manifest_xml(
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::End(_e)) => {
-                break;
+            Ok(Event::End(e)) => {
+                // 注释、文本等都不能终止解析，只有 </manifest> 才退出
+                if bare_name(e.name().as_ref()) == "manifest" {
+                    break;
+                }
             }
-            Ok(Event::Empty(e)) => {
-                match e.name().as_ref() {
-                    b"item" => {
+            Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
+                match bare_name(e.name().as_ref()) {
+                    "item" => {
                         let mut a = EpubAssets::default();
                         let mut is_cover = false;
                         for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"href" => {
+                            match bare_name(attr.key.as_ref()) {
+                                "href" => {
                                     let h = attr
                                         .normalized_value(XmlVersion::Implicit1_0)
                                         .unwrap_or_default()
                                         .to_string();
                                     a.set_file_name(h.as_str());
                                 }
-                                b"id" => {
+                                "id" => {
                                     let h = attr
                                         .normalized_value(XmlVersion::Implicit1_0)
                                         .unwrap_or_default()
@@ -440,26 +516,34 @@ fn read_manifest_xml(
                                     }
                                     a.set_id(h.as_str());
                                 }
-                                b"media-type" => {
+                                "media-type" => {
                                     let h = attr
                                         .normalized_value(XmlVersion::Implicit1_0)
                                         .unwrap_or_default()
                                         .to_string();
                                     a.media_type = h;
                                 }
-                                b"properties" => {
+                                "properties" => {
                                     let h = attr
                                         .normalized_value(XmlVersion::Implicit1_0)
                                         .unwrap_or_default()
                                         .to_string();
-                                    if h.split_whitespace().any(|s| s == "cover-image") {
-                                        is_cover = true;
-                                    }
+                                    a.set_properties(h.as_str());
+                                }
+                                "fallback" => {
+                                    let h = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_default()
+                                        .to_string();
+                                    a.set_fallback(h.as_str());
                                 }
                                 _ => {}
                             }
                         }
 
+                        if a.has_property("cover-image") {
+                            is_cover = true;
+                        }
                         if is_cover {
                             let href = a.file_name();
                             if href.ends_with(".xhtml") || href.ends_with(".html") {
@@ -493,6 +577,8 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     // 模拟 栈，记录当前的层级
     let mut parent: Vec<String> = Vec::new();
     let mut assets: Vec<EpubAssets> = Vec::new();
+    // spine@toc 指向的 manifest 项 id
+    let mut spine_toc: Option<String> = None;
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => {
@@ -501,11 +587,11 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
             Err(_e) => {
                 return invalid!("err");
             }
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"package" => {
+            Ok(Event::Start(e)) => match bare_name(e.name().as_ref()) {
+                "package" => {
                     parent.push("package".to_string());
                     for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"version" {
+                        if bare_name(attr.key.as_ref()) == "version" {
                             let ver = attr
                                 .normalized_value(XmlVersion::Implicit1_0)?
                                 .trim()
@@ -518,7 +604,7 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                         }
                     }
                 }
-                b"metadata" => {
+                "metadata" => {
                     if parent.len() != 1 || parent[0] != "package" {
                         return invalid!("not valid opf metadata");
                     } else {
@@ -526,21 +612,52 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
                     }
                     read_meta_xml(&mut reader, book)?;
                 }
-                b"manifest" => {
+                "manifest" => {
                     read_manifest_xml(&mut reader, book, &mut assets)?;
                 }
-                b"spine" => {
-                    read_spine_xml(&mut reader, book, &mut assets)?;
+                "spine" => {
+                    // spine 自身的属性在这里就读掉，read_spine_xml 拿到时已经在标签内部
+                    for attr in e.attributes().flatten() {
+                        let key = bare_name(attr.key.as_ref()).to_string();
+                        let value = attr
+                            .normalized_value(XmlVersion::Implicit1_0)
+                            .map_or_else(|_| String::new(), |f| f.to_string());
+                        if key == "page-progression-direction" {
+                            if !value.is_empty() {
+                                book.set_direction(Direction::from(value));
+                            }
+                        } else if key == "toc" && !value.is_empty() {
+                            spine_toc = Some(value);
+                        }
+                    }
+                    read_spine_xml(&mut reader, book, &mut assets, &spine_toc)?;
                 }
-                b"guide" => {
+                "guide" => {
                     read_guide_xml(&mut reader, book)?;
                 }
                 _ => {}
             },
-            Ok(Event::Empty(_e)) => {}
+            Ok(Event::Empty(e)) => {
+                // `<spine/>`：没有 itemref，但属性仍然要读
+                if bare_name(e.name().as_ref()) == "spine" {
+                    for attr in e.attributes().flatten() {
+                        let key = bare_name(attr.key.as_ref()).to_string();
+                        let value = attr
+                            .normalized_value(XmlVersion::Implicit1_0)
+                            .map_or_else(|_| String::new(), |f| f.to_string());
+                        if key == "page-progression-direction" {
+                            if !value.is_empty() {
+                                book.set_direction(Direction::from(value));
+                            }
+                        } else if key == "toc" && !value.is_empty() {
+                            spine_toc = Some(value);
+                        }
+                    }
+                }
+            }
             Ok(Event::Text(_txt)) => {}
             Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"package" {
+                if bare_name(e.name().as_ref()) == "package" {
                     if parent.len() == 1 && parent[0] == "package" {
                     } else {
                         // xml错误
@@ -551,6 +668,25 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
             _ => {}
         }
         buf.clear();
+    }
+
+    // 目录文档先定下来，再落资源表
+    let epub3 = book.version().starts_with('3');
+    if let Some(i) = pick_toc_index(assets.as_slice(), spine_toc.as_ref(), epub3) {
+        let mut toc = assets.remove(i);
+        if toc.prefix.is_empty() {
+            toc.prefix = book.prefix().to_string();
+        }
+        book.set_toc(toc);
+    }
+
+    // 资源表在这里统一落库，不再依赖 </spine> 是否被读到
+    for ele in assets.drain(..) {
+        if ele.media_type == "application/x-dtbncx+xml" {
+            // toc.ncx 不作为调用方可见的普通资源
+            continue;
+        }
+        book.add_assets(ele);
     }
 
     let mut last_modify = None;
@@ -607,22 +743,43 @@ fn read_opf_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
         book.set_generator(g.as_str());
     }
 
-    // 处理toc文件
-    if let Some((index, _)) = book
-        .assets()
-        .enumerate()
-        .find(|f| f.1.id() == "toc" || f.1.id() == "ncx")
-    {
-        let toc = book.remove_assets(index);
-        book.set_toc(toc);
-    }
-
     Ok(())
 }
 
+///
+/// 选出目录文档在 manifest 项里的位置
+///
+/// EPUB3 以 `item@properties="nav"` 为准，EPUB2 以 `spine@toc` 指向的 NCX 为准，
+/// id 字面量判据只保留为兜底（生成器取名是任意的，实测 40 本里有 15 本根本不存在 id 为 toc/ncx 的项）
+///
+fn pick_toc_index(assets: &[EpubAssets], spine_toc: Option<&String>, epub3: bool) -> Option<usize> {
+    // 按 properties="nav" 定位的 EPUB3 目录
+    let by_nav = assets.iter().position(|f| f.has_property("nav"));
+    // spine@toc 指向的项（EPUB2 目录，EPUB3 里也常作为兼容目录保留）
+    let by_spine_toc =
+        spine_toc.and_then(|id| assets.iter().position(|f| f.id() == id.as_str()));
+    // media-type 声明的 NCX
+    let by_ncx_type = assets
+        .iter()
+        .position(|f| f.media_type == "application/x-dtbncx+xml");
+    // 历史判据：id 恰好叫 toc 或 ncx
+    let by_id = assets
+        .iter()
+        .position(|f| f.id() == "toc" || f.id() == "ncx");
+    if epub3 {
+        by_nav.or(by_spine_toc).or(by_ncx_type).or(by_id)
+    } else {
+        by_id.or(by_spine_toc).or(by_ncx_type).or(by_nav)
+    }
+}
+
+/// NCX 的单个 navPoint
+///
+/// `root_path` 是 NCX 文件自身所在目录（相对包文档），`content@src` 相对它解析
 fn read_nav_point_xml(
     reader: &mut quick_xml::reader::Reader<&[u8]>,
     nav: &mut EpubNav,
+    root_path: &str,
 ) -> IResult<()> {
     use quick_xml::events::Event;
 
@@ -641,33 +798,38 @@ fn read_nav_point_xml(
             Ok(Event::Eof) => {
                 break;
             }
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"navLabel" => {
+            Ok(Event::Start(e)) => match bare_name(e.name().as_ref()) {
+                "navLabel" => {
                     parent.push("navLavel".to_string());
                 }
-                b"text" => {
+                "text" => {
                     parent.push("text".to_string());
                 }
-                b"content" => {
-                    if let Ok(src) = e.try_get_attribute("src") {
-                        if let Some(h) = src.map(|f| {
+                "content" => {
+                    if let Some(src) = e
+                        .attributes()
+                        .flatten()
+                        .find(|f| bare_name(f.key.as_ref()) == "src")
+                        .map(|f| {
                             f.normalized_value(XmlVersion::Implicit1_0)
                                 .map_or_else(|_| String::new(), |v| v.to_string())
-                        }) {
-                            nav.set_file_name(&h);
-                        }
+                        })
+                    {
+                        // src 可能带有 `../`，需要归一化后才能和章节文件名对上
+                        nav.set_file_name(zip_join(root_path, src.as_str()));
                     }
                 }
-                b"navPoint" => {
+                "navPoint" => {
                     // 套娃了
                     let mut n = EpubNav::default();
-                    read_nav_point_xml(reader, &mut n)?;
+                    read_nav_point_xml(reader, &mut n, root_path)?;
                     nav.push(n);
                 }
                 _ => {}
             },
             Ok(Event::End(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(IError::Utf8)?;
+                let name =
+                    bare_name(e.name().as_ref()).to_string();
 
                 if name == "navPoint" {
                     break;
@@ -683,13 +845,13 @@ fn read_nav_point_xml(
             Ok(Event::Text(e)) => {
                 if parent.last().map(|f| f == "text").unwrap_or(false) {
                     // quick_xml 0.38.0 之后，对于被转义后的xml文本，会把文本拆成多段
-                    title.push_str(e.decode().map_err(IError::Encoding)?.deref());
+                    title.push_str(e.into_inner().as_ref());
                 }
             }
             Ok(Event::GeneralRef(e)) => {
                 // 当文本中出现 &amp;之类的转义时，amp会被放到这里
                 if parent.last().map(|f| f == "text").unwrap_or(false) {
-                    let t = e.decode().map_err(IError::Encoding)?;
+                    let t = e.into_inner();
                     if t == "amp" {
                         title.push('&');
                     } else if t == "lt" {
@@ -714,7 +876,10 @@ fn read_nav_point_xml(
     Ok(())
 }
 
-fn read_nav_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
+/// NCX（EPUB2 目录，EPUB3 也常作为兼容目录保留）
+///
+/// `root_path` 是 NCX 文件自身所在目录（相对包文档），例如 `Navigation/`
+fn read_nav_xml(xml: &str, root_path: String, book: &mut EpubBook) -> IResult<()> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
@@ -735,28 +900,29 @@ fn read_nav_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
             Err(_e) => {
                 return invalid!("err");
             }
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"ncx" => {
+            Ok(Event::Start(e)) => match bare_name(e.name().as_ref()) {
+                "ncx" => {
                     parent.push("ncx".to_string());
                 }
-                b"navMap" => {
+                "navMap" => {
                     if parent.len() != 1 || parent[0] != "ncx" {
                         return invalid!("err nav 1");
                     }
                     parent.push("navMap".to_string());
                 }
-                b"navPoint" => {
+                "navPoint" => {
                     if parent.len() != 2 || parent[1] != "navMap" {
                         return invalid!("err nav 2");
                     }
                     let mut nav = EpubNav::default();
-                    read_nav_point_xml(&mut reader, &mut nav)?;
+                    read_nav_point_xml(&mut reader, &mut nav, root_path.as_str())?;
                     assets.push(nav);
                 }
                 _ => {}
             },
             Ok(Event::End(e)) => {
-                let name = String::from_utf8(e.name().as_ref().to_vec()).map_err(IError::Utf8)?;
+                let name =
+                    bare_name(e.name().as_ref()).to_string();
 
                 if name == "navMap" {
                     break;
@@ -775,89 +941,130 @@ fn read_nav_xml(xml: &str, book: &mut EpubBook) -> IResult<()> {
     Ok(())
 }
 
+/// EPUB3 的 nav.xhtml 目录
+///
+/// `root_path` 是 nav 文档自身所在目录（相对包文档），`<a href>` 相对它解析
 fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResult<()> {
     use quick_xml::events::Event;
     use quick_xml::reader::Reader;
 
     let mut reader = Reader::from_str(xhtml);
     reader.config_mut().trim_text(true);
-    let mut stack: VecDeque<Vec<EpubNav>> = VecDeque::new();
-    let mut items = Vec::new();
-    let mut current_item = None;
+    // 打开的 `<ol>` 层级，栈顶就是当前正在填充的目录层
+    let mut ol_stack: Vec<Vec<EpubNav>> = Vec::new();
+    // 打开的 `<li>`，栈顶是当前尚未闭合的条目，子目录挂在它下面
+    let mut li_stack: Vec<EpubNav> = Vec::new();
+    let mut items: Vec<EpubNav> = Vec::new();
     let mut in_toc_nav = false;
-    let mut buffer = String::new();
+    let mut label = String::new();
     let mut in_label = false;
+    let mut anchor = String::new();
+    let mut in_anchor = false;
     loop {
         match reader.read_event()? {
-            Event::Start(e) => match e.name().as_ref() {
-                b"nav" if has_epub_type(&e, "toc") => in_toc_nav = true,
-                b"ol" if in_toc_nav => stack.push_back(Vec::new()),
-                b"li" if in_toc_nav => current_item = Some(EpubNav::default()),
-                b"a" if in_toc_nav => {
-                    if let Some(href) = e
-                        .attributes()
-                        .find(|a| a.as_ref().map(|a| a.key.0 == b"href").unwrap_or(false))
-                    {
-                        let mut href = String::from_utf8_lossy(&href.unwrap().value).to_string();
-                        if !href.starts_with(&root_path) {
-                            href = format!("{}{}", root_path, href);
-                        }
-                        current_item.as_mut().unwrap().set_file_name(&href);
+            Event::Start(e) => match bare_name(e.name().as_ref()) {
+                "nav" => {
+                    if has_epub_type(&e, "toc") {
+                        in_toc_nav = true;
                     }
                 }
-                b"span" => {
-                    if let Some(class) = e
-                        .attributes()
-                        .find(|a| a.as_ref().map(|a| a.key.0 == b"class").unwrap_or(false))
-                    {
-                        if class
-                            .as_ref()
-                            .map(|a| &*a.value == b"toc-label")
-                            .unwrap_or(false)
+                "ol" if in_toc_nav => ol_stack.push(Vec::new()),
+                "li" if in_toc_nav => li_stack.push(EpubNav::default()),
+                "a" if in_toc_nav => {
+                    in_anchor = true;
+                    anchor.clear();
+                    if li_stack.is_empty() {
+                        // `<ol>` 下直接跟 `<a>` 的不规范写法，也要能收下这一条
+                        li_stack.push(EpubNav::default());
+                    }
+                    for attr in e.attributes().flatten() {
+                        if bare_name(attr.key.as_ref()) == "href" {
+                            let raw = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .map_or_else(|_| String::new(), |f| f.to_string());
+                            // href 相对 nav 文档，可能带 `../`，归一化后才能和章节文件名对上
+                            if let Some(li) = li_stack.last_mut() {
+                                li.set_file_name(zip_join(root_path.as_str(), raw.as_str()));
+                            }
+                        }
+                    }
+                }
+                "span" if in_toc_nav => {
+                    for attr in e.attributes().flatten() {
+                        if bare_name(attr.key.as_ref()) == "class"
+                            && attr.value.split_whitespace().any(|f| f == "toc-label")
                         {
-                            in_label = true
+                            in_label = true;
+                            label.clear();
                         }
                     }
                 }
                 _ => (),
             },
             Event::Text(e) => {
-                let text = e.decode().map_err(IError::Encoding)?;
+                let text = e.into_inner();
                 if in_label {
-                    buffer.push_str(&text);
+                    label.push_str(&text);
+                } else if in_anchor {
+                    anchor.push_str(&text);
                 }
             }
-            Event::End(e) => match e.name().as_ref() {
-                b"nav" => in_toc_nav = false,
-                b"ol" => {
-                    if let Some(children) = stack.pop_back() {
-                        if let Some(last) = stack.back_mut() {
-                            for item in children {
-                                last.last_mut().unwrap().push(item);
+            Event::End(e) => {
+                // 只有 toc 块内部的事件才能驱动状态机，正文和其他 `<nav>` 不能
+                if !in_toc_nav {
+                    continue;
+                }
+                match bare_name(e.name().as_ref()) {
+                    "nav" => in_toc_nav = false,
+                    "a" => {
+                        in_anchor = false;
+                        // `toc-label` 优先，缺失时才用 anchor 文本作为标题
+                        if !anchor.trim().is_empty() {
+                            if let Some(li) = li_stack.last_mut() {
+                                if li.title().is_empty() {
+                                    li.set_title(anchor.trim());
+                                }
                             }
-                        } else {
-                            items = children;
+                        }
+                        anchor.clear();
+                    }
+                    "span" => {
+                        if in_label {
+                            if let Some(li) = li_stack.last_mut() {
+                                li.set_title(label.trim());
+                            }
+                            label.clear();
+                            in_label = false;
                         }
                     }
-                }
-                b"li" => {
-                    if let Some(item) = current_item.take() {
-                        if let Some(children) = stack.back_mut() {
-                            children.push(item);
-                        } else {
-                            items.push(item);
+                    "li" => {
+                        if let Some(item) = li_stack.pop() {
+                            match ol_stack.last_mut() {
+                                Some(layer) => layer.push(item),
+                                None => items.push(item),
+                            }
                         }
                     }
-                }
-                b"span" => {
-                    if in_label {
-                        current_item.as_mut().unwrap().set_title(buffer.trim());
-                        buffer.clear();
-                        in_label = false;
+                    "ol" => {
+                        if let Some(done) = ol_stack.pop() {
+                            if let Some(parent) = li_stack.last_mut() {
+                                // 子目录在父 `<li>` 闭合之前结束（分级目录的常规写法）
+                                for ele in done {
+                                    parent.push(ele);
+                                }
+                            } else if let Some(layer) = ol_stack.last_mut() {
+                                // 父 `<li>` 已经闭合的非常规写法：并进上一层，不崩溃也不丢条目
+                                for ele in done {
+                                    layer.push(ele);
+                                }
+                            } else {
+                                items = done;
+                            }
+                        }
                     }
+                    _ => (),
                 }
-                _ => (),
-            },
+            }
             Event::Eof => break,
             _ => (),
         }
@@ -871,7 +1078,9 @@ fn read_nav_xhtml(xhtml: &str, root_path: String, book: &mut EpubBook) -> IResul
 fn has_epub_type(e: &BytesStart, value: &str) -> bool {
     e.attributes().any(|a| {
         if let Ok(attr) = a {
-            attr.key.0 == b"epub:type" && &*attr.value == value.as_bytes()
+            // `epub:type` 的前缀由生成器决定，比较时要去掉；值本身可以是空格分隔的多个类型
+            bare_name(attr.key.as_ref()) == "type"
+                && attr.value.split_whitespace().any(|f| f == value)
         } else {
             false
         }
@@ -912,37 +1121,44 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
 
             let opf_path = get_opf_location(content.as_str());
             if let Ok(path) = opf_path {
-                let pp = crate::path::Path::system(path.as_str());
-                if pp.level_count() != 1 {
-                    book.prefix.push_str(pp.pop().to_str().as_str());
-                }
+                // zip 内的分隔符恒为 `/`，包文档所在目录就是所有章节与资源的相对基准
+                book.prefix = match path.rfind('/') {
+                    Some(i) => path[..i + 1].to_string(),
+                    None => String::new(),
+                };
                 let opf = read_from_zip!(reader, path.as_str());
                 read_opf_xml(opf.as_str(), book)?;
 
                 {
                     // 读取导航
+                    let mut toc_name = String::new();
+                    let mut toc_type = String::new();
                     if let Some(toc) = book.toc() {
-                        let t = crate::path::Path::system(path.as_str())
-                            .pop()
-                            .join(toc.file_name())
-                            .to_str();
-
+                        toc_name = toc.file_name().to_string();
+                        toc_type = toc.media_type.clone();
+                    }
+                    if !toc_name.is_empty() {
+                        // 目录文档在 zip 内的真实条目名
+                        let mut t = zip_join(book.prefix.as_str(), toc_name.as_str());
+                        if reader.by_name(t.as_str()).is_err() {
+                            // 前缀拼不上时退回原样，兼容包文档与实际存放位置不一致的书
+                            t = toc_name.clone();
+                        }
                         if reader.by_name(t.as_str()).is_ok() {
                             let content = read_from_zip!(reader, t.as_str());
-                            if toc.file_name().contains(".xhtml") {
-                                let root = toc
-                                    .file_name()
-                                    .rfind("/")
-                                    .map(|f| {
-                                        toc.file_name()
-                                            .get(..(f + 1))
-                                            .unwrap_or_default()
-                                            .to_string()
-                                    })
-                                    .unwrap_or_default();
+                            // 目录内部的引用相对的是目录文档自身所在目录
+                            let root = toc_name
+                                [..toc_name.rfind('/').map(|f| f + 1).unwrap_or(0)]
+                                .to_string();
+                            // 按类型分派解析器：nav.xhtml 与 toc.ncx 的结构完全不同，
+                            // 喂错解析器只会扫到结尾返回空目录
+                            if toc_type.contains("html")
+                                || toc_name.ends_with(".xhtml")
+                                || toc_name.ends_with(".html")
+                            {
                                 read_nav_xhtml(content.as_str(), root, book)?;
                             } else {
-                                read_nav_xml(content.as_str(), book)?;
+                                read_nav_xml(content.as_str(), root, book)?;
                             }
                         }
                     }
@@ -967,7 +1183,11 @@ impl<T: Read + Seek + Sync + Send> EpubReaderTrait for EpubReader<T> {
                     .or_else(|| get_img_src(co.0, "image", "xlink:href"))
                     .or_else(|| get_img_src(co.0, "image", "href"))
                     .and_then(|f| String::from_utf8(f).ok())
-                    .map(|src| crate::path::Path::system(co.1).pop().join(src).to_str())
+                    .map(|src| {
+                        // 封面页里的图片引用相对封面页所在目录
+                        let dir = co.1[..co.1.rfind('/').map(|f| f + 1).unwrap_or(0)].to_string();
+                        zip_join(dir.as_str(), src.as_str())
+                    })
                     .and_then(|img| book.assets().find(|f| f.file_name() == img.as_str()))
                 {
                     book.set_cover((*cover).clone());
@@ -1030,10 +1250,10 @@ pub(crate) fn get_img_src(html: &[u8], tag: &str, attribute: &str) -> Option<Vec
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                if e.name().as_ref().eq_ignore_ascii_case(tag.as_bytes()) {
+                if e.name().as_ref().eq_ignore_ascii_case(tag) {
                     for attr in e.attributes().flatten() {
-                        if attr.key.as_ref().eq_ignore_ascii_case(attribute.as_bytes()) {
-                            return Some(attr.value.to_vec());
+                        if attr.key.as_ref().eq_ignore_ascii_case(attribute) {
+                            return Some(attr.value.as_bytes().to_vec());
                         }
                     }
                 }
@@ -1206,7 +1426,7 @@ html
     fn test_read_empty_toc() {
         let xml = r#"<?xml version='1.0' encoding='utf-8'?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta content="1394" name="dtb:uid"/><meta content="0" name="dtb:depth"/><meta content="0" name="dtb:totalPageCount"/><meta content="0" name="dtb:maxPageNumber"/></head><docTitle><text>book_title</text></docTitle><navMap><navPoint id="0-0"><navLabel><text></text></navLabel><content src="0.xhtml"></content><navPoint id="0-0"><navLabel><text></text></navLabel><content src="0.xhtml"></content></navPoint></navPoint></navMap></ncx>"#;
         let mut book = EpubBook::default();
-        let _ = read_nav_xml(xml, &mut book).unwrap();
+        let _ = read_nav_xml(xml, "".to_string(), &mut book).unwrap();
 
         let n = book.nav().as_slice();
 
@@ -1265,7 +1485,8 @@ html
         );
 
         let mut chap = book.chapters_mut();
-        assert_eq!(23, chap.len());
+        // s04.xhtml 用 nav 里的 id 分片成章，整篇不再与分片并存
+        assert_eq!(21, chap.len());
         assert_eq!(75, chap.next().unwrap().data_mut().unwrap().len());
 
         // println!("{}", String::from_utf8( chap.next().unwrap().data().unwrap().to_vec()).unwrap());
@@ -1274,7 +1495,7 @@ html
 
         let nt = chap.next().unwrap();
         println!("nt = {}", nt.title());
-        assert_eq!(9343, nt.data_mut().unwrap().to_vec().len());
+        assert_eq!(2392, nt.data_mut().unwrap().to_vec().len());
 
         for i in chap {
             if let Some(p) = i.parser() {
