@@ -3,12 +3,17 @@
 	"build": {
 		"dockerfile": "Dockerfile.dev"
 	},
+	"overrideCommand":false,
+	"containerEnv": {"VNCPORT":"3222","VNCNAME":"iepub","CALIBRE_DEVELOP_FROM":"${containerWorkspaceFolder}/calibre/src"},
+	"forwardPorts": [3222],
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"rust-lang.rust-analyzer",
 				"cweijan.epub-reader",
 				"vadimcn.vscode-lldb",
+				"Natizyskunk.sftp",
+				"ms-vscode.hexeditor",
 				"mikeburgh.xml-format",
 				"swellaby.vscode-rust-test-adapter"
 			]

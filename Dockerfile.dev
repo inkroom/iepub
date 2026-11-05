@@ -1,4 +1,63 @@
-FROM inkbox/rust:1.90.0
-WORKDIR /iepub
-COPY . /iepub
-RUN apt install -y bsdmainutils unzip 
+FROM fullaxx/ubuntu-desktop
+ENV LANG C.UTF-8
+
+
+ENV CARGO_HOME /usr/local/cargo
+
+
+ENV RUSTUP_HOME /usr/local/rustup
+
+
+ENV PATH ${PATH}:${CARGO_HOME}/bin
+
+
+ENV TZ Asia/Shanghai
+
+
+#ENV RUSTUP_DIST_SERVER=https://mirror.iscas.ac.cn/rustup
+#ENV RUSTUP_UPDATE_ROOT=https://mirror.iscas.ac.cn/rustup/rustup
+
+
+RUN dpkgArch="$(dpkg --print-architecture)"; \
+    case "${dpkgArch##*-}" in \
+        amd64) sed -i "s@http://.*archive.ubuntu.com@https://mirrors.tuna.tsinghua.edu.cn@g" /etc/apt/sources.list && sed -i "s@http://.*security.ubuntu.com@https://mirrors.tuna.tsinghua.edu.cn@g" /etc/apt/sources.list ;; \
+        arm64) sed -i "s@http://mirrors.huaweicloud.com@https://mirror.sjtu.edu.cn@g" /etc/apt/sources.list  ;; \
+        *) echo >&2 "unsupported architecture: ${dpkgArch}" ;; \
+    esac; apt update -y
+RUN apt install -y git zsh vim fonts-wqy-zenhei && git config --global core.editor vim
+RUN echo "LC_ALL=zh_CN.UTF-8" >> /etc/environment && \
+    echo "LANG=zh_CN.UTF-8" > /etc/locale.conf && \
+    echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen && \
+    locale-gen zh_CN.UTF-8 && \
+    update-locale LANG=zh_CN.UTF-8
+
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y 
+RUN rustup target add $(arch)-unknown-linux-musl 
+RUN REPO=sjtug/ohmyzsh REMOTE=https://git.sjtu.edu.cn/${REPO}.git sh -c "$(curl -fsSL https://git.sjtu.edu.cn/sjtug/ohmyzsh/-/raw/master/tools/install.sh\?inline\=false)" \
+&& sed -i "s@/bin/bash@/bin/zsh@" /etc/passwd \
+  && echo export "LANG=\"C.UTF-8\"" >> /root/.zshrc \
+  && echo export "LC_ALL=\"C.UTF-8\"" >> /root/.zshrc \
+  && echo "setopt no_nomatch" >> /root/.zshrc \
+  && echo "setopt histignorespace" >> /root/.zshrc \
+  && echo "export LESSCHARSET=utf-8" >> /root/.zshrc \
+
+
+
+RUN echo "export CARGO_HOME=${CARGO_HOME}" >> /etc/profile \
+    && echo "export RUSTUP_HOME=${RUSTUP_HOME}" >> /etc/profile \
+    && v=$(rustc --version | awk '{print $2}') \
+    && echo "export RUST_VERSION=$v" >> /etc/profile \
+    && echo "export PATH=${PATH}" >> /etc/profile \
+    && echo "export CARGO_HOME=${CARGO_HOME}" >> /root/.zshrc \
+    && echo "export RUSTUP_HOME=${RUSTUP_HOME}" >> /root/.zshrc \
+    && echo "export RUST_VERSION=$v" >> /root/.zshrc \
+    && echo "export PATH=${PATH}" >> /root/.zshrc
+ENV VNCNAME "iepub"
+ENV VNCPORT "5901"
+RUN  sed -i "s@VNCPORT@VNCDISPLAY@g" /app/tiger.sh && sed -i "s@-fg@-fg -desktop \${VNCNAME} -rfbport \${VNCPORT}@g" /app/tiger.sh 
+RUN sh /app/scripts/prepare_firefox_ppa.sh && apt update -y && apt install -y firefox
+RUN apt install -y gcc g++ make pkg-config libssl-dev unzip bsdmainutils unzip python3.11-full libegl1 libopengl0 libxcb-cursor0 xz-utils libglx0 libxkbcommon0
+RUN sudo -v && wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sudo sh /dev/stdin
+RUN git clone https://github.com/emikulic/darkhttpd && cd darkhttpd && make && chmod +x darkhttpd && cp darkhttpd ${CARGO_HOME}/bin/ && cd ../ && rm -rf darkhttpd
+RUN apt install -y bsdmainutils unzip zip
